@@ -1,0 +1,11 @@
+.git
+node_modules
+client/node_modules
+dist
+client/build
+.eslintcache
+*.db
+*.db-shm
+*.db-wal
+bin
+openhook

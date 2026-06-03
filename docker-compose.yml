@@ -1,0 +1,14 @@
+services:
+  openhook:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      OPENHOOK_ADDR: ":8080"
+      OPENHOOK_DB: "/data/openhook.db"
+      OPENHOOK_REQUEST_TIMEOUT: "10"
+    volumes:
+      - openhook-data:/data
+
+volumes:
+  openhook-data:
