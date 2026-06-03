@@ -44,6 +44,29 @@ func TestRouteDeliverForwardsRenderedPayload(t *testing.T) {
 	}
 }
 
+func TestAdminTokenProtectsWriteAPIs(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+	app := NewServer(store.New(db), config.Config{AdminToken: "secret"})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/templates", bytes.NewBufferString(`{"templateName":"blocked","content":"x"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/templates", bytes.NewBufferString(`{"templateName":"allowed","content":"x"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-OpenHook-Admin-Token", "secret")
+	rec = httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))

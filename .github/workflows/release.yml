@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, for example v1.0.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify
+        run: make ci
+
+      - name: Build artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            version="${{ inputs.tag }}"
+          fi
+          mkdir -p dist
+          for os in linux darwin windows; do
+            for arch in amd64 arm64; do
+              name="openhook_${version}_${os}_${arch}"
+              ext=""
+              if [[ "${os}" == "windows" ]]; then
+                ext=".exe"
+              fi
+              GOOS="${os}" GOARCH="${arch}" CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "dist/${name}/openhook${ext}" ./cmd/openhook
+              cp README.md LICENSE "dist/${name}/"
+              if [[ "${os}" == "windows" ]]; then
+                (cd dist && zip -qr "${name}.zip" "${name}")
+              else
+                tar -C dist -czf "dist/${name}.tar.gz" "${name}"
+              fi
+              rm -rf "dist/${name}"
+            done
+          done
+          (cd dist && shasum -a 256 * > checksums.txt)
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          files: dist/*
