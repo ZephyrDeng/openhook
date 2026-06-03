@@ -1,0 +1,6 @@
+bin/
+dist/
+*.db
+*.db-*
+coverage.out
+.DS_Store

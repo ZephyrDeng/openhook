@@ -1,6 +1,6 @@
 # OpenHook
 
-OpenHook is a Go webhook forwarding service inspired by the original `sl-webhook` backend. It keeps the public webhook configuration workflow: message templates, route-based forwarding, token-scoped template updates, filters, dedup rules, delivery logs, and custom middleware.
+OpenHook is a Go webhook forwarding service for message templates, route-based forwarding, token-scoped template updates, filters, dedup rules, delivery logs, and custom middleware.
 
 The implementation uses SQLite by default and depends only on open-source Go modules.
 
