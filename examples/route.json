@@ -1,0 +1,11 @@
+{
+  "name": "generic-alert-route",
+  "templateId": "replace-with-template-id",
+  "targetUrls": ["https://example.com/webhook"],
+  "headers": {
+    "X-Source": "openhook"
+  },
+  "middlewareIds": [],
+  "mode": "envelope",
+  "enabled": true
+}

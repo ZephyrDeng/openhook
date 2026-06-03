@@ -1,0 +1,11 @@
+{
+  "templateName": "generic-alert",
+  "msgType": "markdown",
+  "content": "# {{data.title}}\n- severity: {{data.severity}}\n- service: {{data.service}}\n- trace: {{data.traceId}}",
+  "simulation": {
+    "title": "Checkout error",
+    "severity": "critical",
+    "service": "checkout",
+    "traceId": "trace-123"
+  }
+}
