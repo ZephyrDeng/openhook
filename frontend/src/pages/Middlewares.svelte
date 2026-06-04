@@ -74,11 +74,11 @@
   $effect(() => { load() })
 </script>
 
-<div class="flex flex-col h-full">
-  <div class="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border-subtle)]">
+<div class="page-shell">
+  <div class="page-header mobile-stack">
     <div>
-      <h1 class="text-xl font-semibold text-[var(--color-text-primary)]">中间件</h1>
-      <p class="text-sm text-[var(--color-text-secondary)] mt-0.5">JavaScript 中间件，在投递前处理请求数据</p>
+      <h1 class="page-title">中间件</h1>
+      <p class="page-description">JavaScript 中间件，在投递前处理请求数据</p>
     </div>
     <button class="btn btn-primary" onclick={startNew}>
       <Plus size={16} />
@@ -86,7 +86,7 @@
     </button>
   </div>
 
-  <div class="flex-1 overflow-auto p-6">
+  <div class="page-content">
     {#if loading}
       <div class="flex items-center justify-center h-64"><div class="w-8 h-8 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin"></div></div>
     {:else if items.length === 0 && !editingId}

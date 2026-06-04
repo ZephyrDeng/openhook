@@ -129,8 +129,8 @@
   })
 </script>
 
-<div class="flex flex-col h-full">
-  <div class="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border-subtle)]">
+<div class="page-shell">
+  <div class="page-header">
     <div class="flex items-center gap-3">
       <button class="btn btn-ghost p-2" onclick={onBack}>
         <ArrowLeft size={18} />
@@ -139,7 +139,7 @@
         <h1 class="text-xl font-semibold text-[var(--color-text-primary)]">{isEdit ? '编辑路由' : '新建路由'}</h1>
       </div>
     </div>
-    <div class="flex items-center gap-2">
+    <div class="desktop-actions">
       {#if isEdit}
         <button class="btn btn-secondary" onclick={() => showTestModal = true}>
           <Send size={16} />
@@ -154,7 +154,7 @@
     </div>
   </div>
 
-  <div class="flex-1 overflow-auto p-6">
+  <div class="page-content">
     <div class="max-w-2xl space-y-5">
       <!-- Name -->
       <div>
@@ -183,10 +183,10 @@
         </div>
         <div class="space-y-2">
           {#each form.targetUrls as url, idx}
-            <div class="flex items-center gap-2">
+            <div class="dynamic-field-row">
               <input type="text" class="input flex-1" bind:value={form.targetUrls[idx]} aria-label={`目标 Webhook 地址 ${idx + 1}`} placeholder="https://example.com/webhook" />
               {#if form.targetUrls.length > 1}
-                <button class="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-tertiary)] hover:text-[var(--color-error)]" onclick={() => removeTargetUrl(idx)}>
+                <button class="icon-button p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-tertiary)] hover:text-[var(--color-error)]" onclick={() => removeTargetUrl(idx)}>
                   <Trash2 size={14} />
                 </button>
               {/if}
@@ -205,10 +205,10 @@
         </div>
         <div class="space-y-2">
           {#each form.headers as h, idx}
-            <div class="flex items-center gap-2">
+            <div class="dynamic-field-row stack-mobile">
               <input type="text" class="input flex-1" bind:value={form.headers[idx].key} aria-label={`请求头名称 ${idx + 1}`} placeholder="Header 名" />
               <input type="text" class="input flex-1" bind:value={form.headers[idx].value} aria-label={`请求头值 ${idx + 1}`} placeholder="Header 值" />
-              <button class="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-tertiary)] hover:text-[var(--color-error)]" onclick={() => removeHeader(idx)}>
+              <button class="icon-button p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-tertiary)] hover:text-[var(--color-error)]" onclick={() => removeHeader(idx)}>
                 <Trash2 size={14} />
               </button>
             </div>
@@ -239,7 +239,7 @@
       <!-- Mode -->
       <div>
         <span class="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">投递模式</span>
-        <div class="flex gap-3">
+        <div class="mode-grid">
           <label class="flex items-center gap-2 px-3 py-2 rounded-md border border-[var(--color-border-default)] cursor-pointer hover:border-[var(--color-accent)] transition-colors {form.mode === 'envelope' ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/5' : ''}">
             <input type="radio" bind:group={form.mode} value="envelope" class="accent-[var(--color-accent)]" />
             <span class="text-sm">envelope（包装消息）</span>
@@ -257,6 +257,20 @@
         <label for="enabled" class="text-sm text-[var(--color-text-primary)]">启用此路由</label>
       </div>
     </div>
+  </div>
+
+  <div class="mobile-sticky-actions {isEdit ? 'three-actions' : ''}">
+    {#if isEdit}
+      <button class="btn btn-secondary" onclick={() => showTestModal = true}>
+        <Send size={16} />
+        测试
+      </button>
+    {/if}
+    <button class="btn btn-secondary" onclick={onBack}>取消</button>
+    <button class="btn btn-primary primary-action" onclick={save} disabled={saving}>
+      <Save size={16} />
+      {saving ? '保存中' : '保存'}
+    </button>
   </div>
 </div>
 

@@ -20,13 +20,15 @@
   }
 </script>
 
-<div class="flex flex-col h-full">
-  <div class="px-6 py-4 border-b border-[var(--color-border-subtle)]">
-    <h1 class="text-xl font-semibold text-[var(--color-text-primary)]">设置</h1>
-    <p class="text-sm text-[var(--color-text-secondary)] mt-0.5">配置 API 连接和管理令牌</p>
+<div class="page-shell">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">设置</h1>
+      <p class="page-description">配置 API 连接和管理令牌</p>
+    </div>
   </div>
 
-  <div class="flex-1 overflow-auto p-6">
+  <div class="page-content">
     <div class="max-w-xl space-y-6">
       <div class="card space-y-5">
         <div class="flex items-center gap-2">

@@ -79,11 +79,11 @@
   $effect(() => { load() })
 </script>
 
-<div class="flex flex-col h-full">
-  <div class="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border-subtle)]">
+<div class="page-shell">
+  <div class="page-header mobile-stack">
     <div>
-      <h1 class="text-xl font-semibold text-[var(--color-text-primary)]">令牌</h1>
-      <p class="text-sm text-[var(--color-text-secondary)] mt-0.5">管理外部系统更新模板的访问令牌</p>
+      <h1 class="page-title">令牌</h1>
+      <p class="page-description">管理外部系统更新模板的访问令牌</p>
     </div>
     <button class="btn btn-primary" onclick={startNew}>
       <Plus size={16} />
@@ -91,7 +91,7 @@
     </button>
   </div>
 
-  <div class="flex-1 overflow-auto p-6">
+  <div class="page-content">
     {#if loading}
       <div class="flex items-center justify-center h-64"><div class="w-8 h-8 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin"></div></div>
     {:else if items.length === 0 && !editingId}
@@ -129,7 +129,7 @@
         {/if}
 
         {#if items.length > 0}
-          <div class="card overflow-hidden">
+          <div class="card desktop-table-card">
             <table class="w-full">
               <thead>
                 <tr>
@@ -177,6 +177,40 @@
                 {/each}
               </tbody>
             </table>
+          </div>
+          <div class="mobile-card-list">
+            {#each items as item (item.token)}
+              <article class="mobile-list-card">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <h2 class="text-sm font-semibold text-[var(--color-text-primary)] truncate">{item.name}</h2>
+                    <div class="mt-1 text-xs text-[var(--color-text-tertiary)] truncate">{item.remark || '-'}</div>
+                  </div>
+                  {#if item.status === 1}
+                    <span class="badge badge-success">启用</span>
+                  {:else}
+                    <span class="badge badge-error">{item.status === 0 ? '过期' : '已删除'}</span>
+                  {/if}
+                </div>
+                <div class="mobile-list-meta">
+                  <div class="flex items-center gap-2">
+                    <code class="font-mono bg-[var(--color-bg-tertiary)] px-1.5 py-0.5 rounded">{item.token.slice(0, 16)}...</code>
+                    <button class="text-[var(--color-text-tertiary)] hover:text-[var(--color-accent)]" onclick={() => copyToken(item.token)} aria-label="复制令牌">
+                      <Copy size={14} />
+                    </button>
+                  </div>
+                  {#if item.isCoverAll}
+                    <span class="badge badge-success w-fit">全部模板</span>
+                  {:else}
+                    <span>{item.templateIds?.length || 0} 个模板</span>
+                  {/if}
+                </div>
+                <div class="mobile-list-actions">
+                  <button class="btn btn-secondary flex-1" onclick={() => startEdit(item)}><Pencil size={14} />编辑</button>
+                  <button class="btn btn-danger flex-1" onclick={() => confirmDelete(item)}><Trash2 size={14} />删除</button>
+                </div>
+              </article>
+            {/each}
           </div>
         {/if}
       </div>

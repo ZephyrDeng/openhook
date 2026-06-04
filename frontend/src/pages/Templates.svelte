@@ -48,12 +48,12 @@
   })
 </script>
 
-<div class="flex flex-col h-full">
+<div class="page-shell">
   <!-- Header -->
-  <div class="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border-subtle)]">
+  <div class="page-header mobile-stack">
     <div>
-      <h1 class="text-xl font-semibold text-[var(--color-text-primary)]">消息模板</h1>
-      <p class="text-sm text-[var(--color-text-secondary)] mt-0.5">管理 Webhook 消息模板和预览渲染效果</p>
+      <h1 class="page-title">消息模板</h1>
+      <p class="page-description">管理 Webhook 消息模板和预览渲染效果</p>
     </div>
     <button class="btn btn-primary" onclick={onNew}>
       <Plus size={16} />
@@ -62,7 +62,7 @@
   </div>
 
   <!-- Search -->
-  <div class="px-6 py-3 border-b border-[var(--color-border-subtle)]">
+  <div class="px-4 md:px-6 py-3 border-b border-[var(--color-border-subtle)]">
     <div class="relative max-w-md">
       <Search size={16} class="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-tertiary)]" />
       <input
@@ -76,7 +76,7 @@
   </div>
 
   <!-- Content -->
-  <div class="flex-1 overflow-auto p-6">
+  <div class="page-content">
     {#if loading}
       <div class="flex items-center justify-center h-64">
         <div class="w-8 h-8 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin"></div>
@@ -94,7 +94,7 @@
         </button>
       </div>
     {:else}
-      <div class="card overflow-hidden">
+      <div class="card desktop-table-card">
         <table class="w-full">
           <thead>
             <tr>
@@ -151,6 +151,52 @@
             {/each}
           </tbody>
         </table>
+      </div>
+      <div class="mobile-card-list">
+        {#each items as item (item.templateId)}
+          <article class="mobile-list-card">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <h2 class="text-sm font-semibold text-[var(--color-text-primary)] truncate">{item.templateName}</h2>
+                <div class="mt-1 text-[11px] text-[var(--color-text-tertiary)] font-mono truncate">{item.templateId}</div>
+              </div>
+              {#if item.visibility === 'public'}
+                <span class="badge badge-warning">public</span>
+              {:else}
+                <span class="badge badge-success">private</span>
+              {/if}
+            </div>
+            <div class="mobile-list-meta">
+              <div class="flex items-center gap-2">
+                <span class="text-[var(--color-text-tertiary)]">类型</span>
+                <span class="badge badge-success">{item.msgType}</span>
+              </div>
+              <div class="break-words text-[var(--color-text-secondary)]">{item.content}</div>
+            </div>
+            {#if item.canEdit || item.canDel}
+              <div class="mobile-list-actions">
+                {#if item.canEdit}
+                  <button
+                    class="btn btn-secondary flex-1"
+                    onclick={(e) => { e.stopPropagation(); onEdit(item) }}
+                  >
+                    <Pencil size={14} />
+                    编辑
+                  </button>
+                {/if}
+                {#if item.canDel}
+                  <button
+                    class="btn btn-danger flex-1"
+                    onclick={(e) => { e.stopPropagation(); confirmDelete(item) }}
+                  >
+                    <Trash2 size={14} />
+                    删除
+                  </button>
+                {/if}
+              </div>
+            {/if}
+          </article>
+        {/each}
       </div>
     {/if}
   </div>

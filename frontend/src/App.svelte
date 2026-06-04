@@ -12,7 +12,7 @@
   import Settings from './pages/Settings.svelte'
   import { auth } from './stores/api.js'
   import { toast } from './stores/toast.js'
-  import { Github, KeyRound, LogIn } from 'lucide-svelte'
+  import { Blocks, FileText, Github, KeyRound, LogIn, Route, Settings as SettingsIcon, Truck } from 'lucide-svelte'
 
   let currentPage = $state('templates')
   let sidebarCollapsed = $state(false)
@@ -24,6 +24,17 @@
   let adminToken = $state('')
   let loggingIn = $state(false)
   let isLoginRoute = $state(false)
+  const isAdmin = $derived(authState?.admin || authState?.authRequired === false)
+  const mobileNavItems = $derived([
+    { id: 'templates', label: '模板', icon: FileText },
+    { id: 'routes', label: '路由', icon: Route },
+    ...(isAdmin ? [
+      { id: 'middlewares', label: '中间件', icon: Blocks },
+      { id: 'tokens', label: '令牌', icon: KeyRound },
+      { id: 'deliveries', label: '日志', icon: Truck },
+    ] : []),
+    { id: 'settings', label: '设置', icon: SettingsIcon },
+  ])
 
   onMount(() => {
     adminToken = localStorage.getItem('openhook-token') || ''
@@ -192,10 +203,12 @@
     </div>
   </div>
 {:else}
-  <div class="flex h-screen overflow-hidden">
-    <Sidebar bind:currentPage bind:collapsed={sidebarCollapsed} {authState} onLogout={handleLogout} />
+  <div class="app-shell">
+    <div class="desktop-sidebar">
+      <Sidebar bind:currentPage bind:collapsed={sidebarCollapsed} {authState} onLogout={handleLogout} />
+    </div>
 
-    <main class="flex-1 flex flex-col min-w-0 bg-[var(--color-bg-primary)] overflow-hidden">
+    <main class="app-main">
       {#if currentPage === 'templates'}
         <Templates onEdit={handleEditTemplate} onNew={handleNewTemplate} />
       {:else if currentPage === 'template-editor'}
@@ -214,5 +227,19 @@
         <Settings />
       {/if}
     </main>
+
+    <nav class="mobile-bottom-nav" aria-label="主导航">
+      {#each mobileNavItems as item}
+        <button
+          class="mobile-bottom-nav-item {currentPage === item.id ? 'active' : ''}"
+          onclick={() => handleNavigate(item.id)}
+          aria-label={item.label}
+          aria-current={currentPage === item.id ? 'page' : undefined}
+        >
+          <item.icon size={18} strokeWidth={1.8} />
+          <span>{item.label}</span>
+        </button>
+      {/each}
+    </nav>
   </div>
 {/if}

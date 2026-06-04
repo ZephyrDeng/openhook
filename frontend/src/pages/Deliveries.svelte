@@ -35,13 +35,15 @@
   $effect(() => { load() })
 </script>
 
-<div class="flex flex-col h-full">
-  <div class="px-6 py-4 border-b border-[var(--color-border-subtle)]">
-    <h1 class="text-xl font-semibold text-[var(--color-text-primary)]">投递日志</h1>
-    <p class="text-sm text-[var(--color-text-secondary)] mt-0.5">查看所有 Webhook 投递记录和响应详情</p>
+<div class="page-shell">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">投递日志</h1>
+      <p class="page-description">查看所有 Webhook 投递记录和响应详情</p>
+    </div>
   </div>
 
-  <div class="flex-1 overflow-auto p-6">
+  <div class="page-content">
     {#if loading}
       <div class="flex items-center justify-center h-64"><div class="w-8 h-8 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin"></div></div>
     {:else if items.length === 0}
@@ -51,7 +53,7 @@
         <p class="text-sm text-[var(--color-text-secondary)] mt-1">通过路由投递消息后将在这里显示日志</p>
       </div>
     {:else}
-      <div class="card overflow-hidden">
+      <div class="card desktop-table-card">
         <table class="w-full">
           <thead>
             <tr>
@@ -90,6 +92,30 @@
             {/each}
           </tbody>
         </table>
+      </div>
+      <div class="mobile-card-list">
+        {#each items as item (item.id)}
+          <button type="button" class="mobile-list-card text-left w-full" onclick={() => showDetail(item)}>
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="font-mono text-xs text-[var(--color-text-primary)] truncate">{item.requestId}</div>
+                <div class="mt-1 text-xs text-[var(--color-text-tertiary)]">{formatTime(item.createAt)}</div>
+              </div>
+              {#if item.success}
+                <span class="badge badge-success">成功</span>
+              {:else}
+                <span class="badge badge-error">{item.message || '失败'}</span>
+              {/if}
+            </div>
+            <div class="mobile-list-meta">
+              <div class="flex items-center gap-2">
+                <span class="text-[var(--color-text-tertiary)]">状态码</span>
+                <span class="font-mono {item.statusCode >= 200 && item.statusCode < 300 ? 'text-[var(--color-success)]' : 'text-[var(--color-error)]'}">{item.statusCode || '-'}</span>
+              </div>
+              <div class="break-all">{item.targetUrl}</div>
+            </div>
+          </button>
+        {/each}
       </div>
     {/if}
   </div>
