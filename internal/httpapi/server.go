@@ -18,6 +18,7 @@ import (
 	"github.com/ZephyrDeng/openhook/internal/forward"
 	jsmw "github.com/ZephyrDeng/openhook/internal/middleware"
 	"github.com/ZephyrDeng/openhook/internal/model"
+	"github.com/ZephyrDeng/openhook/internal/provider"
 	"github.com/ZephyrDeng/openhook/internal/render"
 	"github.com/ZephyrDeng/openhook/internal/response"
 	"github.com/ZephyrDeng/openhook/internal/store"
@@ -100,6 +101,8 @@ func (s *Server) routeAPI(w http.ResponseWriter, r *http.Request, parts []string
 		s.handleAuthAPI(w, r, parts[1:])
 	case "templates", "message-template":
 		s.handleTemplates(w, r, parts[1:])
+	case "providers":
+		s.handleProviders(w, r, parts[1:])
 	case "tokens", "token":
 		s.handleTokens(w, r, parts[1:])
 	case "routes":
@@ -310,35 +313,82 @@ func (s *Server) ensureStarterTemplates(user model.User) error {
 func starterTemplates(user model.User) []model.TemplateInput {
 	owner := user.UserID
 	createBy := userActorName(user)
-	return []model.TemplateInput{
-		{
-			TemplateName: "企微-机器人 Markdown",
-			MsgType:      "markdown",
-			Content:      "{\"msgtype\":\"markdown\",\"markdown\":{\"content\":{{json data.text}}}}",
-			Script:       `ctx.text = "# " + (ctx.title || "OpenHook") + "\n\n- 级别: " + (ctx.severity || "info") + "\n- 服务: " + (ctx.service || "-") + "\n- 环境: " + (ctx.environment || "-") + "\n- 时间: " + (ctx.time || "") + "\n\n" + (ctx.description || ""); return true;`,
-			Simulation:   json.RawMessage(`{"title":"OpenHook 告警","severity":"info","service":"openhook","environment":"prod","time":"2026-06-04 00:00:00","description":"GitHub 用户专属企微模板"}`),
-			CreateBy:     createBy,
-			CurrentOwner: owner,
-		},
-		{
-			TemplateName: "Telegram-sendMessage",
-			MsgType:      "markdown",
-			Content:      "{\"chat_id\":{{json data.chatId}},\"text\":{{json data.text}},\"parse_mode\":\"HTML\",\"disable_web_page_preview\":true}",
-			Script:       `const esc = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); ctx.text = "<b>" + esc(ctx.title || "OpenHook") + "</b>\n\nSeverity: " + esc(ctx.severity || "info") + "\nService: " + esc(ctx.service || "-") + "\nEnvironment: " + esc(ctx.environment || "-") + "\n\n" + esc(ctx.description || ""); return true;`,
-			Simulation:   json.RawMessage(`{"chatId":"123456789","title":"OpenHook alert","severity":"info","service":"openhook","environment":"prod","description":"GitHub user owned Telegram template"}`),
-			CreateBy:     createBy,
-			CurrentOwner: owner,
-		},
-		{
-			TemplateName: "QQ-Webhook 文本",
-			MsgType:      "markdown",
-			Content:      "{\"msg_type\":\"text\",\"content\":{{json data.text}}}",
-			Script:       `ctx.text = (ctx.title || "OpenHook") + "\n级别: " + (ctx.severity || "info") + "\n服务: " + (ctx.service || "-") + "\n环境: " + (ctx.environment || "-") + "\n" + (ctx.description || ""); return true;`,
-			Simulation:   json.RawMessage(`{"title":"OpenHook alert","severity":"info","service":"openhook","environment":"prod","description":"QQ webhook bridge text payload"}`),
-			CreateBy:     createBy,
-			CurrentOwner: owner,
-		},
+	ids := []string{"wecom-markdown", "telegram-html"}
+	items := make([]model.TemplateInput, 0, len(ids)+1)
+	for _, id := range ids {
+		input, err := provider.TemplateInput(id, createBy, owner)
+		if err == nil {
+			items = append(items, input)
+		}
 	}
+	items = append(items, model.TemplateInput{
+		TemplateName: "QQ-Webhook 文本",
+		MsgType:      "markdown",
+		Content:      "{\"msg_type\":\"text\",\"content\":{{json data.text}}}",
+		Script:       `ctx.text = (ctx.title || "OpenHook") + "\n级别: " + (ctx.severity || "info") + "\n服务: " + (ctx.service || "-") + "\n环境: " + (ctx.environment || "-") + "\n" + (ctx.description || ""); return true;`,
+		Simulation:   json.RawMessage(`{"title":"OpenHook alert","severity":"info","service":"openhook","environment":"prod","description":"QQ webhook bridge text payload"}`),
+		CreateBy:     createBy,
+		CurrentOwner: owner,
+	})
+	return items
+}
+
+func (s *Server) handleProviders(w http.ResponseWriter, r *http.Request, parts []string) {
+	if len(parts) == 0 && r.Method == http.MethodGet {
+		if _, ok := s.authorizedActor(w, r); !ok {
+			return
+		}
+		response.OK(w, provider.All())
+		return
+	}
+	if len(parts) == 1 && r.Method == http.MethodGet {
+		if _, ok := s.authorizedActor(w, r); !ok {
+			return
+		}
+		preset, ok := provider.Find(parts[0])
+		if !ok {
+			writeStoreResult(w, nil, store.ErrNotFound, http.StatusOK)
+			return
+		}
+		response.OK(w, preset)
+		return
+	}
+	if len(parts) == 2 && parts[1] == "templates" && r.Method == http.MethodPost {
+		act, ok := s.authorizedActor(w, r)
+		if !ok {
+			return
+		}
+		createBy := ""
+		owner := ""
+		if !act.admin {
+			createBy = userActorName(act.user)
+			owner = act.user.UserID
+		}
+		input, err := provider.TemplateInput(parts[0], createBy, owner)
+		if err != nil {
+			writeStoreResult(w, nil, store.ErrNotFound, http.StatusOK)
+			return
+		}
+		var override struct {
+			TemplateName string `json:"templateName"`
+			Visibility   string `json:"visibility"`
+		}
+		if r.Body != nil && r.ContentLength != 0 {
+			if !decodeJSON(w, r, &override) {
+				return
+			}
+		}
+		if override.TemplateName != "" {
+			input.TemplateName = override.TemplateName
+		}
+		if override.Visibility != "" {
+			input.Visibility = override.Visibility
+		}
+		item, err := s.store.CreateTemplate(input)
+		writeStoreResult(w, item, err, http.StatusCreated)
+		return
+	}
+	response.Error(w, http.StatusNotFound, "provider route not found")
 }
 
 func (s *Server) handleTemplates(w http.ResponseWriter, r *http.Request, parts []string) {

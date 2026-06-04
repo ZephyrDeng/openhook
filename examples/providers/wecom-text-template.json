@@ -1,0 +1,15 @@
+{
+  "templateName": "企微-机器人 Text",
+  "msgType": "text",
+  "content": "{\"msgtype\":\"text\",\"text\":{\"content\":{{json data.text}},\"mentioned_list\":{{json data.mentionedList}},\"mentioned_mobile_list\":{{json data.mentionedMobileList}}}}",
+  "script": "ctx.text = (ctx.title || \"OpenHook\") + \"\\n级别: \" + (ctx.severity || \"info\") + \"\\n服务: \" + (ctx.service || \"-\") + \"\\n环境: \" + (ctx.environment || \"-\") + \"\\n\" + (ctx.description || \"\"); ctx.mentionedList = ctx.mentionedList || []; ctx.mentionedMobileList = ctx.mentionedMobileList || []; return true;",
+  "simulation": {
+    "title": "OpenHook 告警",
+    "severity": "info",
+    "service": "openhook",
+    "environment": "prod",
+    "description": "企微机器人文本测试",
+    "mentionedList": [],
+    "mentionedMobileList": []
+  }
+}

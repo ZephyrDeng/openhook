@@ -1,8 +1,8 @@
 <script>
-  import { templates } from '../stores/api.js'
+  import { providers, templates } from '../stores/api.js'
   import { toast } from '../stores/toast.js'
   import FormField from '../components/FormField.svelte'
-  import { ArrowLeft, Save, RotateCcw } from 'lucide-svelte'
+  import { ArrowLeft, Save, RotateCcw, MessagesSquare } from 'lucide-svelte'
 
   let { template = null, onBack } = $props()
 
@@ -14,6 +14,7 @@
       msgType: t?.msgType || 'markdown',
       visibility: t?.visibility || 'private',
       content: t?.content || '# {{data.title}}\n- severity: {{data.severity}}\n- service: {{data.service}}',
+      script: t?.script || '',
       simulation: t?.simulation ? JSON.stringify(t.simulation, null, 2) : '{\n  "title": "Test Alert",\n  "severity": "critical",\n  "service": "checkout"\n}',
     }
   }
@@ -23,6 +24,9 @@
   let previewResult = $state(null)
   let previewLoading = $state(false)
   let saving = $state(false)
+  let providerPresets = $state([])
+  let loadingPresets = $state(false)
+  let selectedPresetId = $state('')
 
   const errors = $derived({
     templateName: touched.templateName && !form.templateName.trim() ? '请输入模板名称' : '',
@@ -39,6 +43,7 @@
       const res = await templates.preview({
         content: form.content,
         simulation: simData,
+        script: form.script,
         msgType: form.msgType,
       })
       previewResult = res.data
@@ -70,6 +75,7 @@
         msgType: form.msgType,
         visibility: form.visibility,
         content: form.content,
+        script: form.script,
         simulation: JSON.parse(form.simulation || '{}'),
       }
       if (isEdit) {
@@ -93,13 +99,47 @@
     schedulePreview()
   }
 
+  async function loadProviderPresets() {
+    loadingPresets = true
+    try {
+      const res = await providers.list()
+      providerPresets = res.data || []
+    } catch (e) {
+      toast.error('加载 Provider 预设失败: ' + e.message)
+    } finally {
+      loadingPresets = false
+    }
+  }
+
+  function applyProviderPreset(preset) {
+    selectedPresetId = preset.id
+    form.templateName = preset.templateName
+    form.msgType = preset.msgType
+    form.content = preset.content
+    form.script = preset.script || ''
+    form.simulation = JSON.stringify(preset.simulation || {}, null, 2)
+    touched = {}
+    schedulePreview()
+    toast.success(`已套用 ${preset.displayName}`)
+  }
+
+  function previewLines(value) {
+    return String(value || '').split('\n')
+  }
+
+  function previewJSON(value) {
+    return JSON.stringify(value, null, 2)
+  }
+
   $effect(() => {
     const next = buildForm(template)
     form.templateName = next.templateName
     form.msgType = next.msgType
     form.visibility = next.visibility
     form.content = next.content
+    form.script = next.script
     form.simulation = next.simulation
+    selectedPresetId = ''
     touched = {}
   })
 
@@ -117,6 +157,10 @@
     { value: 'private', label: '私有' },
     { value: 'public', label: '公开' },
   ]
+
+  $effect(() => {
+    if (!isEdit) loadProviderPresets()
+  })
 </script>
 
 <div class="page-shell">
@@ -152,6 +196,36 @@
     <!-- Left: Form -->
     <div class="editor-form-pane">
       <div class="max-w-2xl space-y-5">
+        {#if !isEdit}
+          <div class="provider-preset-panel">
+            <div class="flex items-center justify-between gap-3 mb-3">
+              <div>
+                <div class="form-section-title">Provider 预设</div>
+                <p class="text-xs text-[var(--color-text-secondary)]">选择成熟消息格式，自动填充模板内容和模拟数据</p>
+              </div>
+              <MessagesSquare size={18} class="text-[var(--color-text-tertiary)]" />
+            </div>
+            {#if loadingPresets}
+              <div class="skeleton h-10"></div>
+            {:else}
+              <div class="provider-preset-grid">
+                {#each providerPresets as preset (preset.id)}
+                  <button
+                    type="button"
+                    class="provider-preset-button {selectedPresetId === preset.id ? 'active' : ''}"
+                    onclick={() => applyProviderPreset(preset)}
+                    title={preset.targetUrlHint}
+                  >
+                    <span class="provider-preset-name">{preset.displayName}</span>
+                    <span class="provider-preset-desc">{preset.description}</span>
+                    <span class="provider-preset-meta">{preset.provider} · {preset.routeMode}</span>
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {/if}
+
         <FormField label="模板名称" forId="template-name" required error={errors.templateName}>
           <input
             id="template-name"
@@ -194,6 +268,21 @@
             onblur={() => touched.content = true}
             oninput={schedulePreview}
             placeholder={'# {{data.title}}\n- severity: {{data.severity}}'}
+          ></textarea>
+        </FormField>
+
+        <FormField
+          label="处理脚本"
+          forId="template-script"
+          helper="可选，在渲染模板前加工 ctx，例如拼接企微/TG 的 text 字段"
+        >
+          <textarea
+            id="template-script"
+            class="input font-mono text-[13px] leading-[22px] resize-y"
+            style="min-height: 110px; tab-size: 2;"
+            bind:value={form.script}
+            oninput={schedulePreview}
+            placeholder={'ctx.text = ctx.title || "OpenHook"; return true;'}
           ></textarea>
         </FormField>
 
@@ -243,9 +332,9 @@
           <div>
             <div class="text-xs font-medium text-[var(--color-text-tertiary)] uppercase tracking-wide mb-2">渲染结果</div>
             <div class="bg-white rounded-md border border-[var(--color-border-subtle)] p-4 text-sm">
-              {#if form.msgType === 'markdown'}
+              {#if typeof previewResult === 'string' && form.msgType === 'markdown'}
                 <div class="prose prose-sm max-w-none">
-                  {#each previewResult.split('\n') as line}
+                  {#each previewLines(previewResult) as line}
                     {#if line.startsWith('# ')}
                       <h1 class="text-lg font-bold mt-2 mb-1">{line.slice(2)}</h1>
                     {:else if line.startsWith('## ')}
@@ -259,8 +348,10 @@
                     {/if}
                   {/each}
                 </div>
-              {:else}
+              {:else if typeof previewResult === 'string'}
                 <pre class="whitespace-pre-wrap font-mono text-xs">{previewResult}</pre>
+              {:else}
+                <pre class="whitespace-pre-wrap font-mono text-xs">{previewJSON(previewResult)}</pre>
               {/if}
             </div>
           </div>
