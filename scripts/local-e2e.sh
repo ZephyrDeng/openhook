@@ -3,13 +3,27 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/openhook-e2e.XXXXXX")"
-APP_PORT="${OPENHOOK_E2E_APP_PORT:-18080}"
-RECEIVER_PORT="${OPENHOOK_E2E_RECEIVER_PORT:-18081}"
+
+pick_port() {
+  python3 - <<'PY'
+import socket
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+    sock.bind(("127.0.0.1", 0))
+    print(sock.getsockname()[1])
+PY
+}
+
+APP_PORT="${OPENHOOK_E2E_APP_PORT:-$(pick_port)}"
+RECEIVER_PORT="${OPENHOOK_E2E_RECEIVER_PORT:-$(pick_port)}"
+if [[ "${APP_PORT}" == "${RECEIVER_PORT}" ]]; then
+  RECEIVER_PORT="$(pick_port)"
+fi
 APP_URL="http://127.0.0.1:${APP_PORT}"
 RECEIVER_URL="http://127.0.0.1:${RECEIVER_PORT}/webhook"
 DB_PATH="${TMP_DIR}/openhook.db"
 APP_LOG="${TMP_DIR}/openhook.log"
 RECEIVER_LOG="${TMP_DIR}/receiver.jsonl"
+RECEIVER_ERR="${TMP_DIR}/receiver.err"
 RECEIVER_PID=""
 APP_PID=""
 
@@ -32,6 +46,8 @@ fail() {
   test -f "${APP_LOG}" && tail -80 "${APP_LOG}" >&2 || true
   echo "--- receiver log ---" >&2
   test -f "${RECEIVER_LOG}" && cat "${RECEIVER_LOG}" >&2 || true
+  echo "--- receiver stderr ---" >&2
+  test -f "${RECEIVER_ERR}" && cat "${RECEIVER_ERR}" >&2 || true
   exit 1
 }
 
@@ -97,13 +113,21 @@ class Handler(BaseHTTPRequestHandler):
 ThreadingHTTPServer(("127.0.0.1", int(os.environ["RECEIVER_PORT"])), Handler).serve_forever()
 PY
 
-RECEIVER_LOG="${RECEIVER_LOG}" RECEIVER_PORT="${RECEIVER_PORT}" python3 "${TMP_DIR}/receiver.py" &
+RECEIVER_LOG="${RECEIVER_LOG}" RECEIVER_PORT="${RECEIVER_PORT}" python3 "${TMP_DIR}/receiver.py" >"${TMP_DIR}/receiver.out" 2>"${RECEIVER_ERR}" &
 RECEIVER_PID="$!"
 wait_for "http://127.0.0.1:${RECEIVER_PORT}/health" || fail "receiver did not start"
 
 (
   cd "${ROOT_DIR}"
-  OPENHOOK_DB="${DB_PATH}" OPENHOOK_ADDR=":${APP_PORT}" OPENHOOK_REQUEST_TIMEOUT=5 go run ./cmd/openhook
+  OPENHOOK_DB="${DB_PATH}" \
+  OPENHOOK_ADDR=":${APP_PORT}" \
+  OPENHOOK_REQUEST_TIMEOUT=5 \
+  OPENHOOK_ADMIN_TOKEN= \
+  OPENHOOK_PUBLIC_BASE_URL= \
+  OPENHOOK_GITHUB_CLIENT_ID= \
+  OPENHOOK_GITHUB_CLIENT_SECRET= \
+  OPENHOOK_SESSION_TTL= \
+  go run ./cmd/openhook
 ) >"${APP_LOG}" 2>&1 &
 APP_PID="$!"
 wait_for "${APP_URL}/health" || fail "openhook did not start"

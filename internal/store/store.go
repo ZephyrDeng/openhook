@@ -58,6 +58,24 @@ func Migrate(db *sql.DB) error {
 			create_at INTEGER NOT NULL,
 			update_at INTEGER NOT NULL
 		);`,
+		`CREATE TABLE IF NOT EXISTS users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id TEXT NOT NULL UNIQUE,
+			provider TEXT NOT NULL,
+			provider_id TEXT NOT NULL,
+			login TEXT NOT NULL,
+			name TEXT NOT NULL DEFAULT '',
+			avatar_url TEXT NOT NULL DEFAULT '',
+			create_at INTEGER NOT NULL,
+			update_at INTEGER NOT NULL,
+			UNIQUE(provider, provider_id)
+		);`,
+		`CREATE TABLE IF NOT EXISTS sessions (
+			token TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			expires_at INTEGER NOT NULL,
+			create_at INTEGER NOT NULL
+		);`,
 		`CREATE TABLE IF NOT EXISTS tokens (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			token TEXT NOT NULL UNIQUE,
@@ -77,6 +95,7 @@ func Migrate(db *sql.DB) error {
 			route_id TEXT NOT NULL UNIQUE,
 			name TEXT NOT NULL,
 			template_id TEXT NOT NULL,
+			owner_user_id TEXT NOT NULL DEFAULT '',
 			target_urls TEXT NOT NULL DEFAULT '[]',
 			headers TEXT NOT NULL DEFAULT '{}',
 			middleware_ids TEXT NOT NULL DEFAULT '[]',
@@ -123,13 +142,50 @@ func Migrate(db *sql.DB) error {
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_deliveries_request_id ON deliveries(request_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_deliveries_created ON deliveries(create_at);`,
+		`CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);`,
 	}
 	for _, stmt := range schema {
 		if _, err := db.Exec(stmt); err != nil {
 			return err
 		}
 	}
+	if err := addColumnIfMissing(db, "routes", "owner_user_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_templates_owner ON templates(current_owner);`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_routes_owner ON routes(owner_user_id);`); err != nil {
+		return err
+	}
 	return nil
+}
+
+func addColumnIfMissing(db *sql.DB, table, column, definition string) error {
+	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, columnType string
+		var notNull int
+		var defaultValue any
+		var pk int
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
+			return err
+		}
+		if name == column {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + column + ` ` + definition)
+	return err
 }
 
 func nowMS() int64 {
@@ -187,7 +243,10 @@ func (s *Store) CreateTemplate(input model.TemplateInput) (model.Template, error
 	id := newID("tpl")
 	key := newID("key")
 	ts := nowMS()
-	owner := input.CreateBy
+	owner := input.CurrentOwner
+	if owner == "" {
+		owner = input.CreateBy
+	}
 	_, err := s.db.Exec(
 		`INSERT INTO templates(template_id, template_key, template_name, content, msg_type, script, async_script, simulation, create_by, update_by, current_owner, create_at, update_at)
 		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -200,6 +259,10 @@ func (s *Store) CreateTemplate(input model.TemplateInput) (model.Template, error
 }
 
 func (s *Store) ListTemplates(search string, limit, offset int, sortBy, sortOrder string) ([]model.Template, int, error) {
+	return s.ListTemplatesForOwner(search, "", limit, offset, sortBy, sortOrder)
+}
+
+func (s *Store) ListTemplatesForOwner(search, owner string, limit, offset int, sortBy, sortOrder string) ([]model.Template, int, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 100
 	}
@@ -209,12 +272,20 @@ func (s *Store) ListTemplates(search string, limit, offset int, sortBy, sortOrde
 	if strings.ToLower(sortOrder) != "asc" {
 		sortOrder = "desc"
 	}
-	where := ""
+	whereParts := []string{}
 	args := []any{}
+	if owner != "" {
+		whereParts = append(whereParts, "current_owner = ?")
+		args = append(args, owner)
+	}
 	if search != "" {
-		where = "WHERE template_id = ? OR template_name LIKE ? OR content LIKE ?"
+		whereParts = append(whereParts, "(template_id = ? OR template_name LIKE ? OR content LIKE ?)")
 		like := "%" + search + "%"
 		args = append(args, search, like, like)
+	}
+	where := ""
+	if len(whereParts) > 0 {
+		where = "WHERE " + strings.Join(whereParts, " AND ")
 	}
 	var total int
 	if err := s.db.QueryRow(`SELECT COUNT(1) FROM templates `+where, args...).Scan(&total); err != nil {
@@ -227,7 +298,7 @@ func (s *Store) ListTemplates(search string, limit, offset int, sortBy, sortOrde
 		return nil, 0, err
 	}
 	defer rows.Close()
-	var items []model.Template
+	items := make([]model.Template, 0)
 	for rows.Next() {
 		item, err := scanTemplate(rows)
 		if err != nil {

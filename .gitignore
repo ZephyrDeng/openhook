@@ -1,6 +1,7 @@
 bin/
-dist/
+/dist/
 *.db
 *.db-*
 coverage.out
 .DS_Store
+frontend/node_modules

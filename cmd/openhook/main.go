@@ -12,6 +12,7 @@ import (
 
 	"github.com/ZephyrDeng/openhook/internal/config"
 	"github.com/ZephyrDeng/openhook/internal/httpapi"
+	"github.com/ZephyrDeng/openhook/internal/static"
 	"github.com/ZephyrDeng/openhook/internal/store"
 )
 
@@ -30,7 +31,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.NewServer(store.New(db), cfg),
+		Handler:           httpapi.NewServer(store.New(db), cfg, static.Handler()),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,

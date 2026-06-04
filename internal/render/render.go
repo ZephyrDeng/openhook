@@ -9,6 +9,7 @@ import (
 )
 
 var placeholder = regexp.MustCompile(`\{\{\s*([a-zA-Z0-9_.$\[\]-]+)\s*\}\}`)
+var jsonPlaceholder = regexp.MustCompile(`\{\{\s*json\s+([a-zA-Z0-9_.$\[\]-]+)\s*\}\}`)
 
 type Context struct {
 	Data   map[string]any `json:"data"`
@@ -16,12 +17,28 @@ type Context struct {
 }
 
 func Template(content string, data map[string]any, global map[string]any) (any, error) {
-	rendered := placeholder.ReplaceAllStringFunc(content, func(token string) string {
+	root := map[string]any{"data": data, "global": global}
+	rendered := jsonPlaceholder.ReplaceAllStringFunc(content, func(token string) string {
+		match := jsonPlaceholder.FindStringSubmatch(token)
+		if len(match) != 2 {
+			return token
+		}
+		value, ok := Resolve(root, match[1])
+		if !ok {
+			return "null"
+		}
+		raw, err := json.Marshal(value)
+		if err != nil {
+			return "null"
+		}
+		return string(raw)
+	})
+	rendered = placeholder.ReplaceAllStringFunc(rendered, func(token string) string {
 		match := placeholder.FindStringSubmatch(token)
 		if len(match) != 2 {
 			return token
 		}
-		value, ok := Resolve(map[string]any{"data": data, "global": global}, match[1])
+		value, ok := Resolve(root, match[1])
 		if !ok || value == nil {
 			return ""
 		}
