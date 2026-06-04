@@ -279,6 +279,53 @@ func TestAuthenticatedUsersSeeOnlyOwnedTemplatesAndRoutes(t *testing.T) {
 	assertListContainsOnly(t, app, bobCookie, "/api/routes", "bob")
 }
 
+func TestPublicTemplatesAreReusableButEditableOnlyByOwner(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+	st := store.New(db)
+	app := NewServer(st, config.Config{GitHubClientID: "client", GitHubClientSecret: "secret"}, nil)
+
+	aliceCookie := createTestSession(t, st, "1001", "alice")
+	bobCookie := createTestSession(t, st, "1002", "bob")
+
+	privateID := createTemplateWithCookieAndBody(t, app, aliceCookie, `{"templateName":"alice-private","msgType":"markdown","content":"private: {{data.title}}"}`)
+	publicID := createTemplateWithCookieAndBody(t, app, aliceCookie, `{"templateName":"alice-public","msgType":"markdown","content":"public: {{data.title}}","visibility":"public"}`)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/templates", nil)
+	req.AddCookie(bobCookie)
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("bob templates status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "alice-private") || strings.Contains(rec.Body.String(), privateID) {
+		t.Fatalf("private template leaked to bob: %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "alice-public") || !strings.Contains(rec.Body.String(), `"visibility":"public"`) {
+		t.Fatalf("public template missing from bob list: %s", rec.Body.String())
+	}
+
+	createRouteWithCookie(t, app, bobCookie, publicID, "https://example.com/bob-public")
+
+	req = httptest.NewRequest(http.MethodPut, "/api/templates/"+publicID, bytes.NewBufferString(`{"templateName":"bob-edited","content":"x"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(bobCookie)
+	rec = httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("bob editing public template status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPut, "/api/templates/"+publicID, bytes.NewBufferString(`{"templateName":"alice-public-updated","content":"public: {{data.title}}","visibility":"public"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(aliceCookie)
+	rec = httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("alice editing public template status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestAuthenticatedUserEmptyRoutesReturnsArray(t *testing.T) {
 	db := openTestDB(t)
 	defer db.Close()
@@ -295,6 +342,96 @@ func TestAuthenticatedUserEmptyRoutesReturnsArray(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"data":[]`) {
 		t.Fatalf("empty route list should be an array: %s", rec.Body.String())
+	}
+}
+
+func TestRouteMiddlewareTokenAndDeliveryUseCases(t *testing.T) {
+	var received map[string]any
+	var receivedHeader string
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedHeader = r.Header.Get("X-OpenHook-Test")
+		defer r.Body.Close()
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Fatal(err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer target.Close()
+
+	db := openTestDB(t)
+	defer db.Close()
+	st := store.New(db)
+	app := NewServer(st, config.Config{}, nil)
+
+	template, err := st.CreateTemplate(model.TemplateInput{
+		TemplateName: "middleware-template",
+		Content:      "{\"title\":{{json data.title}}}",
+		MsgType:      "markdown",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mw, err := st.CreateMiddleware(model.CustomMiddlewareInput{
+		Name: "append-header",
+		Code: `ctx.title = ctx.title + "-mw"; headers["X-OpenHook-Test"] = "yes"; return true;`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	route, err := st.CreateRoute(model.RouteInput{
+		Name:          "middleware-route",
+		TemplateID:    template.TemplateID,
+		TargetURLs:    []string{target.URL + "/webhook?key=secret"},
+		MiddlewareIDs: []string{mw.MiddlewareID},
+		Mode:          "raw",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/routes/"+route.RouteID+"/deliver", bytes.NewBufferString(`{"title":"hello"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("deliver status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if receivedHeader != "yes" || received["title"] != "hello-mw" {
+		t.Fatalf("middleware was not applied, header=%q body=%#v", receivedHeader, received)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/deliveries?limit=10", nil)
+	rec = httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("deliveries status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), route.RouteID) || strings.Contains(rec.Body.String(), "secret") {
+		t.Fatalf("delivery log missing route or leaked target secret: %s", rec.Body.String())
+	}
+
+	other, err := st.CreateTemplate(model.TemplateInput{TemplateName: "other-template", Content: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := st.CreateToken(model.TokenInput{Name: "scoped-token", TemplateIDs: []string{template.TemplateID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodPut, "/api/templates/"+template.TemplateID+"/token/"+token.Token, bytes.NewBufferString(`{"templateName":"middleware-template-updated","content":"updated"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("scoped token update status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	req = httptest.NewRequest(http.MethodPut, "/api/templates/"+other.TemplateID+"/token/"+token.Token, bytes.NewBufferString(`{"templateName":"other-updated","content":"updated"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("token updating out-of-scope template status=%d body=%s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -495,8 +632,12 @@ func createTestSession(t *testing.T, st *store.Store, providerID, login string) 
 }
 
 func createTemplateWithCookie(t *testing.T, app http.Handler, cookie *http.Cookie, name string) string {
+	return createTemplateWithCookieAndBody(t, app, cookie, `{"templateName":"`+name+`","msgType":"markdown","content":"title: {{data.title}}"}`)
+}
+
+func createTemplateWithCookieAndBody(t *testing.T, app http.Handler, cookie *http.Cookie, body string) string {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, "/api/templates", bytes.NewBufferString(`{"templateName":"`+name+`","msgType":"markdown","content":"title: {{data.title}}"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/templates", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()

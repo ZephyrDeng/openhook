@@ -4,7 +4,7 @@
   import { ArrowLeft, Save, Plus, Trash2, Send, X } from 'lucide-svelte'
   import Modal from '../components/Modal.svelte'
 
-  let { route = null, onBack } = $props()
+  let { route = null, onBack, allowMiddlewares = false } = $props()
 
   let isEdit = $derived(!!route)
 
@@ -33,7 +33,10 @@
 
   async function loadRefs() {
     try {
-      const [tRes, mRes] = await Promise.all([templates.list(), mwApi.list()])
+      const [tRes, mRes] = await Promise.all([
+        templates.list(),
+        allowMiddlewares ? mwApi.list() : Promise.resolve({ data: [] }),
+      ])
       tplList = tRes.data || []
       mwList = mRes.data || []
     } catch (e) {
@@ -73,7 +76,7 @@
         templateId: form.templateId,
         targetUrls: form.targetUrls.filter((u) => u.trim()),
         headers: Object.fromEntries(form.headers.filter((h) => h.key.trim()).map((h) => [h.key, h.value])),
-        middlewareIds: form.middlewareIds,
+        middlewareIds: allowMiddlewares ? form.middlewareIds : [],
         mode: form.mode,
         enabled: form.enabled,
       }
@@ -165,7 +168,7 @@
         <select id="route-template" class="input" bind:value={form.templateId}>
           <option value="">选择模板...</option>
           {#each tplList as tpl}
-            <option value={tpl.templateId}>{tpl.templateName} ({tpl.templateId})</option>
+            <option value={tpl.templateId}>{tpl.templateName} · {tpl.visibility || 'private'} ({tpl.templateId})</option>
           {/each}
         </select>
       </div>
@@ -213,24 +216,25 @@
         </div>
       </div>
 
-      <!-- Middlewares -->
-      <div>
-        <span class="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">中间件</span>
-        {#if mwList.length === 0}
-          <p class="text-sm text-[var(--color-text-tertiary)]">暂无中间件，请先创建中间件</p>
-        {:else}
-          <div class="flex flex-wrap gap-2">
-            {#each mwList as mw}
-              <button
-                class="px-3 py-1.5 rounded-md text-xs font-medium border transition-all {form.middlewareIds.includes(mw.middlewareId) ? 'bg-[var(--color-accent)]/10 border-[var(--color-accent)] text-[var(--color-accent)]' : 'bg-[var(--color-bg-primary)] border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:border-[var(--color-border-default)]'}"
-                onclick={() => toggleMiddleware(mw.middlewareId)}
-              >
-                {mw.name}
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </div>
+      {#if allowMiddlewares}
+        <div>
+          <span class="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">中间件</span>
+          {#if mwList.length === 0}
+            <p class="text-sm text-[var(--color-text-tertiary)]">暂无中间件，请先创建中间件</p>
+          {:else}
+            <div class="flex flex-wrap gap-2">
+              {#each mwList as mw}
+                <button
+                  class="px-3 py-1.5 rounded-md text-xs font-medium border transition-all {form.middlewareIds.includes(mw.middlewareId) ? 'bg-[var(--color-accent)]/10 border-[var(--color-accent)] text-[var(--color-accent)]' : 'bg-[var(--color-bg-primary)] border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:border-[var(--color-border-default)]'}"
+                  onclick={() => toggleMiddleware(mw.middlewareId)}
+                >
+                  {mw.name}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      {/if}
 
       <!-- Mode -->
       <div>

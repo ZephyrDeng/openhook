@@ -1,6 +1,6 @@
 <script>
   import { 
-    FileText, Route, Blocks, KeyRound, Truck, Filter, CopyX, Settings,
+    FileText, Route, Blocks, KeyRound, Truck, Settings,
     ChevronLeft, ChevronRight, LogOut, Shield, UserCircle
   } from 'lucide-svelte'
 
@@ -11,15 +11,16 @@
     onLogout = () => {},
   } = $props()
 
-  const navItems = [
+  const isAdmin = $derived(authState?.admin || authState?.authRequired === false)
+  const navItems = $derived([
     { id: 'templates', label: '消息模板', icon: FileText },
     { id: 'routes', label: '路由', icon: Route },
-    { id: 'middlewares', label: '中间件', icon: Blocks },
-    { id: 'tokens', label: '令牌', icon: KeyRound },
-    { id: 'deliveries', label: '投递日志', icon: Truck },
-    { id: 'filters', label: '过滤器', icon: Filter },
-    { id: 'dedup', label: '去重规则', icon: CopyX },
-  ]
+    ...(isAdmin ? [
+      { id: 'middlewares', label: '中间件', icon: Blocks },
+      { id: 'tokens', label: '令牌', icon: KeyRound },
+      { id: 'deliveries', label: '投递日志', icon: Truck },
+    ] : []),
+  ])
 
   let currentUser = $derived(authState?.user || {})
   let displayName = $derived(authState?.admin ? '管理员' : (currentUser.name || currentUser.login || 'GitHub 用户'))

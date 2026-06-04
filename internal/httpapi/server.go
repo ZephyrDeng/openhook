@@ -429,13 +429,16 @@ func (s *Server) handleTemplates(w http.ResponseWriter, r *http.Request, parts [
 		if err == nil && !s.canUseTemplate(act, item) {
 			err = store.ErrNotFound
 		}
+		if err == nil {
+			item = s.templateForActor(act, item)
+		}
 		writeStoreResult(w, item, err, http.StatusOK)
 	case http.MethodPut:
 		act, ok := s.authorizedActor(w, r)
 		if !ok {
 			return
 		}
-		if !s.canUseTemplateID(act, templateID) {
+		if !s.canEditTemplateID(act, templateID) {
 			writeStoreResult(w, nil, store.ErrNotFound, http.StatusOK)
 			return
 		}
@@ -455,7 +458,7 @@ func (s *Server) handleTemplates(w http.ResponseWriter, r *http.Request, parts [
 		if !ok {
 			return
 		}
-		if !s.canUseTemplateID(act, templateID) {
+		if !s.canEditTemplateID(act, templateID) {
 			writeStoreResult(w, nil, store.ErrNotFound, http.StatusOK)
 			return
 		}
@@ -480,6 +483,9 @@ func (s *Server) listTemplates(w http.ResponseWriter, r *http.Request, act actor
 	if err != nil {
 		writeStoreResult(w, nil, err, http.StatusOK)
 		return
+	}
+	for i := range items {
+		items[i] = s.templateForActor(act, items[i])
 	}
 	if strings.Contains(r.URL.Path, "paginated") {
 		response.OK(w, map[string]any{"items": items, "total": total, "page": page, "size": size})
@@ -1018,7 +1024,22 @@ func (s *Server) canUseTemplateID(act actor, templateID string) bool {
 }
 
 func (s *Server) canUseTemplate(act actor, template model.Template) bool {
+	return act.admin || template.Visibility == "public" || (act.user.UserID != "" && template.CurrentOwner == act.user.UserID)
+}
+
+func (s *Server) canEditTemplateID(act actor, templateID string) bool {
+	template, err := s.store.GetTemplate(templateID)
+	return err == nil && s.canEditTemplate(act, template)
+}
+
+func (s *Server) canEditTemplate(act actor, template model.Template) bool {
 	return act.admin || (act.user.UserID != "" && template.CurrentOwner == act.user.UserID)
+}
+
+func (s *Server) templateForActor(act actor, template model.Template) model.Template {
+	template.CanEdit = s.canEditTemplate(act, template)
+	template.CanDel = template.CanEdit
+	return template
 }
 
 func (s *Server) routeForActor(act actor, routeID string) (model.Route, error) {
