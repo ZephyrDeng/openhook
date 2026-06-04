@@ -147,6 +147,18 @@ run_production_smoke() {
   (cd "${ROOT_DIR}" && OPENHOOK_API_BASE="${PUBLIC_URL}" scripts/production-smoke.sh)
 }
 
+run_production_readiness() {
+  if [[ "${OPENHOOK_RUN_PRODUCTION_READINESS:-0}" != "1" ]]; then
+    return
+  fi
+  if [[ "${DRY_RUN}" == "1" ]]; then
+    log "would run production readiness against ${PUBLIC_URL}"
+    return
+  fi
+  log "run production readiness"
+  (cd "${ROOT_DIR}" && OPENHOOK_API_BASE="${PUBLIC_URL}" OPENHOOK_DEPLOY_HOST="${DEPLOY_HOST}" OPENHOOK_REMOTE_SERVICE="${REMOTE_SERVICE}" OPENHOOK_REMOTE_ENV_FILE="${REMOTE_ENV_FILE}" scripts/production-readiness.sh)
+}
+
 run_frontend_build
 run_checks
 build_binary
@@ -154,3 +166,4 @@ sync_remote_env
 deploy_binary
 verify_remote
 run_production_smoke
+run_production_readiness
