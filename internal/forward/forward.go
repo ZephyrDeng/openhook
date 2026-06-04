@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"time"
 
 	"github.com/ZephyrDeng/openhook/internal/model"
@@ -31,13 +32,14 @@ func New(timeout time.Duration) *Sender {
 }
 
 func (s *Sender) Send(ctx context.Context, req Request) (model.SendResult, []byte) {
+	targetURL := RedactURL(req.URL)
 	body, err := buildBody(req)
 	if err != nil {
-		return model.SendResult{TargetURL: req.URL, Code: -1, Message: err.Error()}, nil
+		return model.SendResult{TargetURL: targetURL, Code: -1, Message: err.Error()}, nil
 	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, req.URL, bytes.NewReader(body))
 	if err != nil {
-		return model.SendResult{TargetURL: req.URL, Code: -1, Message: err.Error()}, body
+		return model.SendResult{TargetURL: targetURL, Code: -1, Message: err.Error()}, body
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("User-Agent", "openhook/1.0")
@@ -52,12 +54,12 @@ func (s *Sender) Send(ctx context.Context, req Request) (model.SendResult, []byt
 
 	resp, err := s.client.Do(httpReq)
 	if err != nil {
-		return model.SendResult{TargetURL: req.URL, Code: -1, Message: err.Error()}, body
+		return model.SendResult{TargetURL: targetURL, Code: -1, Message: err.Error()}, body
 	}
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	result := model.SendResult{
-		TargetURL:  req.URL,
+		TargetURL:  targetURL,
 		Code:       resp.StatusCode,
 		StatusCode: resp.StatusCode,
 		Message:    resp.Status,
@@ -106,8 +108,19 @@ func jsonOrString(raw []byte) []byte {
 }
 
 func RedactURL(url string) string {
-	if len(url) <= 16 {
-		return url
+	parsed, err := neturl.Parse(url)
+	if err == nil && parsed.Scheme != "" && parsed.Host != "" {
+		redacted := parsed.Scheme + "://" + parsed.Host
+		if parsed.Path != "" && parsed.Path != "/" {
+			redacted += "/***"
+		}
+		if parsed.RawQuery != "" {
+			redacted += "?***"
+		}
+		return redacted
 	}
-	return fmt.Sprintf("%s***%s", url[:8], url[len(url)-8:])
+	if len(url) <= 8 {
+		return "***"
+	}
+	return fmt.Sprintf("%s***%s", url[:4], url[len(url)-4:])
 }

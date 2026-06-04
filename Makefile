@@ -1,4 +1,4 @@
-.PHONY: lint test build run tidy e2e ci clean
+.PHONY: lint test frontend-build build build-all run run-dev bootstrap deploy deploy-production production-smoke tidy e2e deploy-openhook-test provider-smoke-test production-smoke-test bootstrap-test ci clean
 
 lint:
 	test -z "$$(gofmt -l cmd internal)"
@@ -7,11 +7,31 @@ lint:
 test:
 	go test ./...
 
-build:
+frontend-build:
+	cd frontend && npm run build
+
+build: frontend-build
 	go build -o bin/openhook ./cmd/openhook
 
-run:
+build-all: build
+
+run: build
+	./bin/openhook
+
+run-dev:
 	go run ./cmd/openhook
+
+deploy:
+	scripts/deploy-openhook.sh
+
+deploy-production:
+	OPENHOOK_RUN_PRODUCTION_SMOKE=1 scripts/deploy-openhook.sh
+
+production-smoke:
+	scripts/production-smoke.sh
+
+bootstrap:
+	scripts/bootstrap-openhook-server.sh
 
 tidy:
 	go mod tidy
@@ -19,7 +39,20 @@ tidy:
 e2e:
 	scripts/local-e2e.sh
 
+deploy-openhook-test:
+	scripts/deploy-openhook-test.sh
+
+provider-smoke-test:
+	scripts/provider-smoke-test.sh
+
+production-smoke-test:
+	scripts/production-smoke-test.sh
+
+bootstrap-test:
+	scripts/bootstrap-openhook-server-test.sh
+
 ci: lint test build e2e
 
 clean:
 	rm -rf bin dist coverage.out
+	cd frontend && rm -rf node_modules dist

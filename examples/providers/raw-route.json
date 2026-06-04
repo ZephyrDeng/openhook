@@ -1,0 +1,9 @@
+{
+  "name": "replace-with-provider-route-name",
+  "templateId": "replace-with-template-id",
+  "targetUrls": ["https://example.com/provider-webhook"],
+  "headers": {},
+  "middlewareIds": [],
+  "mode": "raw",
+  "enabled": true
+}

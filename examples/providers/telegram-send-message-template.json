@@ -1,0 +1,14 @@
+{
+  "templateName": "Telegram-sendMessage",
+  "msgType": "markdown",
+  "content": "{\"chat_id\":{{json data.chatId}},\"text\":{{json data.text}},\"parse_mode\":\"HTML\",\"disable_web_page_preview\":true}",
+  "script": "const esc = (v) => String(v ?? \"\").replace(/&/g, \"&amp;\").replace(/</g, \"&lt;\").replace(/>/g, \"&gt;\"); ctx.text = \"<b>\" + esc(ctx.title || \"OpenHook\") + \"</b>\\n\\nSeverity: \" + esc(ctx.severity || \"info\") + \"\\nService: \" + esc(ctx.service || \"-\") + \"\\nEnvironment: \" + esc(ctx.environment || \"-\") + \"\\n\\n\" + esc(ctx.description || \"\"); return true;",
+  "simulation": {
+    "chatId": "123456789",
+    "title": "OpenHook alert",
+    "severity": "info",
+    "service": "openhook",
+    "environment": "prod",
+    "description": "Telegram sendMessage 测试"
+  }
+}

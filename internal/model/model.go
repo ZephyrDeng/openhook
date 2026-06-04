@@ -2,6 +2,25 @@ package model
 
 import "encoding/json"
 
+type User struct {
+	ID         int64  `json:"id"`
+	UserID     string `json:"userId"`
+	Provider   string `json:"provider"`
+	ProviderID string `json:"providerId"`
+	Login      string `json:"login"`
+	Name       string `json:"name,omitempty"`
+	AvatarURL  string `json:"avatarUrl,omitempty"`
+	CreateAt   int64  `json:"createAt"`
+	UpdateAt   int64  `json:"updateAt"`
+}
+
+type Session struct {
+	Token     string `json:"-"`
+	User      User   `json:"user"`
+	ExpiresAt int64  `json:"expiresAt"`
+	CreateAt  int64  `json:"createAt"`
+}
+
 type Template struct {
 	ID           int64           `json:"id"`
 	TemplateID   string          `json:"templateId"`
@@ -29,6 +48,7 @@ type TemplateInput struct {
 	AsyncScript  string          `json:"asyncScript"`
 	Simulation   json.RawMessage `json:"simulation"`
 	CreateBy     string          `json:"createBy"`
+	CurrentOwner string          `json:"currentOwner"`
 }
 
 type TokenStatus int
@@ -69,6 +89,7 @@ type Route struct {
 	RouteID       string            `json:"routeId"`
 	Name          string            `json:"name"`
 	TemplateID    string            `json:"templateId"`
+	OwnerUserID   string            `json:"ownerUserId,omitempty"`
 	TargetURLs    []string          `json:"targetUrls"`
 	Headers       map[string]string `json:"headers,omitempty"`
 	MiddlewareIDs []string          `json:"middlewareIds,omitempty"`
@@ -81,6 +102,7 @@ type Route struct {
 type RouteInput struct {
 	Name          string            `json:"name"`
 	TemplateID    string            `json:"templateId"`
+	OwnerUserID   string            `json:"ownerUserId"`
 	TargetURLs    []string          `json:"targetUrls"`
 	Headers       map[string]string `json:"headers"`
 	MiddlewareIDs []string          `json:"middlewareIds"`

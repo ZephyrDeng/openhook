@@ -1,0 +1,14 @@
+{
+  "templateName": "企微-机器人 Markdown",
+  "msgType": "markdown",
+  "content": "{\"msgtype\":\"markdown\",\"markdown\":{\"content\":{{json data.text}}}}",
+  "script": "ctx.text = \"# \" + (ctx.title || \"OpenHook\") + \"\\n\\n- 级别: \" + (ctx.severity || \"info\") + \"\\n- 服务: \" + (ctx.service || \"-\") + \"\\n- 环境: \" + (ctx.environment || \"-\") + \"\\n- 时间: \" + (ctx.time || \"\") + \"\\n\\n\" + (ctx.description || \"\"); return true;",
+  "simulation": {
+    "title": "OpenHook 告警",
+    "severity": "info",
+    "service": "openhook",
+    "environment": "prod",
+    "time": "2026-06-04 00:00:00",
+    "description": "企微机器人 Markdown 测试"
+  }
+}

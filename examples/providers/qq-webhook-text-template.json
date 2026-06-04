@@ -1,0 +1,13 @@
+{
+  "templateName": "QQ-Webhook 文本",
+  "msgType": "markdown",
+  "content": "{\"msg_type\":\"text\",\"content\":{{json data.text}}}",
+  "script": "ctx.text = (ctx.title || \"OpenHook\") + \"\\n级别: \" + (ctx.severity || \"info\") + \"\\n服务: \" + (ctx.service || \"-\") + \"\\n环境: \" + (ctx.environment || \"-\") + \"\\n\" + (ctx.description || \"\"); return true;",
+  "simulation": {
+    "title": "OpenHook alert",
+    "severity": "info",
+    "service": "openhook",
+    "environment": "prod",
+    "description": "QQ webhook bridge 文本测试"
+  }
+}

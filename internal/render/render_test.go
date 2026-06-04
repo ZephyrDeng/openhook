@@ -30,3 +30,19 @@ func TestTemplateReturnsJSONObject(t *testing.T) {
 		t.Fatalf("unexpected object: %#v", object)
 	}
 }
+
+func TestTemplateJSONPlaceholderEscapesStringValues(t *testing.T) {
+	got, err := Template(`{"text":{{json data.text}}}`, map[string]any{
+		"text": "line one\nline \"two\"",
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	object, ok := got.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map, got %T", got)
+	}
+	if object["text"] != "line one\nline \"two\"" {
+		t.Fatalf("unexpected object: %#v", object)
+	}
+}

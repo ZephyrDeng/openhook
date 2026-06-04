@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ZephyrDeng/openhook/internal/config"
 	"github.com/ZephyrDeng/openhook/internal/forward"
@@ -25,13 +27,24 @@ type Server struct {
 	store  *store.Store
 	cfg    config.Config
 	sender *forward.Sender
+	static http.Handler
 }
 
-func NewServer(st *store.Store, cfg config.Config) http.Handler {
+const sessionCookieName = "openhook_session"
+const oauthStateCookieName = "openhook_oauth_state"
+const oauthReturnCookieName = "openhook_oauth_return"
+
+type actor struct {
+	admin bool
+	user  model.User
+}
+
+func NewServer(st *store.Store, cfg config.Config, staticHandler http.Handler) http.Handler {
 	server := &Server{
 		store:  st,
 		cfg:    cfg,
 		sender: forward.New(cfg.RequestTimeout),
+		static: staticHandler,
 	}
 	return server.withCORS(http.HandlerFunc(server.route))
 }
@@ -44,12 +57,22 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if path == "" || path == "health" {
+	if path == "health" {
+		response.OK(w, map[string]any{"status": "ok"})
+		return
+	}
+	if path == "" && s.static == nil {
 		response.OK(w, map[string]any{"status": "ok"})
 		return
 	}
 
 	switch {
+	case len(parts) == 3 && parts[0] == "auth" && parts[1] == "github" && parts[2] == "start":
+		s.handleGitHubStart(w, r)
+	case len(parts) == 2 && (parts[0] == "login" || parts[0] == "register") && parts[1] == "github":
+		s.handleGitHubStart(w, r)
+	case len(parts) == 3 && parts[0] == "auth" && parts[1] == "github" && parts[2] == "callback":
+		s.handleGitHubCallback(w, r)
 	case len(parts) == 2 && parts[0] == "webhook" && parts[1] == "gitlab":
 		s.handleGitlab(w, r)
 	case len(parts) == 2 && parts[0] == "webhook" && parts[1] == "sentry":
@@ -59,7 +82,11 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 	case len(parts) == 2 && parts[0] == "webhook":
 		s.handleTemplateWebhook(w, r, parts[1])
 	default:
-		response.Error(w, http.StatusNotFound, "route not found")
+		if s.static != nil {
+			s.static.ServeHTTP(w, r)
+		} else {
+			response.Error(w, http.StatusNotFound, "route not found")
+		}
 	}
 }
 
@@ -69,6 +96,8 @@ func (s *Server) routeAPI(w http.ResponseWriter, r *http.Request, parts []string
 		return
 	}
 	switch parts[0] {
+	case "auth":
+		s.handleAuthAPI(w, r, parts[1:])
 	case "templates", "message-template":
 		s.handleTemplates(w, r, parts[1:])
 	case "tokens", "token":
@@ -88,18 +117,251 @@ func (s *Server) routeAPI(w http.ResponseWriter, r *http.Request, parts []string
 	}
 }
 
+func (s *Server) handleAuthAPI(w http.ResponseWriter, r *http.Request, parts []string) {
+	if len(parts) == 1 && parts[0] == "me" && r.Method == http.MethodGet {
+		act, ok := s.actorFromRequest(r)
+		if !ok {
+			response.OK(w, map[string]any{
+				"authenticated": false,
+				"authRequired":  s.authEnabled(),
+				"githubEnabled": s.githubEnabled(),
+			})
+			return
+		}
+		response.OK(w, map[string]any{
+			"authenticated": true,
+			"authRequired":  s.authEnabled(),
+			"admin":         act.admin,
+			"user":          act.user,
+			"githubEnabled": s.githubEnabled(),
+		})
+		return
+	}
+	if len(parts) == 1 && parts[0] == "logout" && r.Method == http.MethodPost {
+		if cookie, err := r.Cookie(sessionCookieName); err == nil {
+			_ = s.store.DeleteSession(cookie.Value)
+		}
+		http.SetCookie(w, s.expiredCookie(sessionCookieName))
+		response.OK(w, map[string]any{"loggedOut": true})
+		return
+	}
+	response.Error(w, http.StatusNotFound, "auth route not found")
+}
+
+func (s *Server) handleGitHubStart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		response.Error(w, http.StatusMethodNotAllowed, "")
+		return
+	}
+	if !s.githubEnabled() {
+		response.Error(w, http.StatusServiceUnavailable, "github login is not configured")
+		return
+	}
+	state := randomToken("oauth")
+	returnTo := r.URL.Query().Get("returnTo")
+	if returnTo == "" || !strings.HasPrefix(returnTo, "/") || strings.HasPrefix(returnTo, "//") {
+		returnTo = "/"
+	}
+	http.SetCookie(w, s.cookie(oauthStateCookieName, state, 10*time.Minute))
+	http.SetCookie(w, s.cookie(oauthReturnCookieName, returnTo, 10*time.Minute))
+
+	authURL, err := url.Parse(s.cfg.GitHubAuthURL)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "invalid github auth url")
+		return
+	}
+	query := authURL.Query()
+	query.Set("client_id", s.cfg.GitHubClientID)
+	query.Set("redirect_uri", strings.TrimRight(s.cfg.PublicBaseURL, "/")+"/auth/github/callback")
+	query.Set("scope", "read:user")
+	query.Set("state", state)
+	authURL.RawQuery = query.Encode()
+	http.Redirect(w, r, authURL.String(), http.StatusFound)
+}
+
+func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		response.Error(w, http.StatusMethodNotAllowed, "")
+		return
+	}
+	stateCookie, err := r.Cookie(oauthStateCookieName)
+	if err != nil || stateCookie.Value == "" || stateCookie.Value != r.URL.Query().Get("state") {
+		response.Error(w, http.StatusBadRequest, "invalid oauth state")
+		return
+	}
+	code := r.URL.Query().Get("code")
+	if code == "" {
+		response.Error(w, http.StatusBadRequest, "missing oauth code")
+		return
+	}
+	user, err := s.exchangeGitHubUser(r.Context(), code)
+	if err != nil {
+		response.Error(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	if err := s.ensureStarterTemplates(user); err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	session, err := s.store.CreateSession(user.UserID, s.cfg.SessionTTL)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	http.SetCookie(w, s.cookie(sessionCookieName, session.Token, s.cfg.SessionTTL))
+	http.SetCookie(w, s.expiredCookie(oauthStateCookieName))
+	http.SetCookie(w, s.expiredCookie(oauthReturnCookieName))
+	returnTo := "/"
+	if cookie, err := r.Cookie(oauthReturnCookieName); err == nil && strings.HasPrefix(cookie.Value, "/") && !strings.HasPrefix(cookie.Value, "//") {
+		returnTo = cookie.Value
+	}
+	http.Redirect(w, r, returnTo, http.StatusFound)
+}
+
+func (s *Server) exchangeGitHubUser(ctx context.Context, code string) (model.User, error) {
+	form := url.Values{}
+	form.Set("client_id", s.cfg.GitHubClientID)
+	form.Set("client_secret", s.cfg.GitHubClientSecret)
+	form.Set("code", code)
+	tokenReq, err := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.GitHubTokenURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return model.User{}, err
+	}
+	tokenReq.Header.Set("Accept", "application/json")
+	tokenReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	tokenResp, err := http.DefaultClient.Do(tokenReq)
+	if err != nil {
+		return model.User{}, err
+	}
+	defer tokenResp.Body.Close()
+	if tokenResp.StatusCode < 200 || tokenResp.StatusCode >= 300 {
+		return model.User{}, fmt.Errorf("github token exchange failed: %s", tokenResp.Status)
+	}
+	var tokenBody struct {
+		AccessToken string `json:"access_token"`
+		TokenType   string `json:"token_type"`
+		Error       string `json:"error"`
+		Description string `json:"error_description"`
+	}
+	if err := json.NewDecoder(io.LimitReader(tokenResp.Body, 1<<20)).Decode(&tokenBody); err != nil {
+		return model.User{}, err
+	}
+	if tokenBody.AccessToken == "" {
+		if tokenBody.Error != "" {
+			return model.User{}, fmt.Errorf("github token exchange failed: %s", firstNonEmpty(tokenBody.Description, tokenBody.Error))
+		}
+		return model.User{}, fmt.Errorf("github token exchange returned no access token")
+	}
+
+	userReq, err := http.NewRequestWithContext(ctx, http.MethodGet, s.cfg.GitHubUserURL, nil)
+	if err != nil {
+		return model.User{}, err
+	}
+	userReq.Header.Set("Accept", "application/json")
+	userReq.Header.Set("Authorization", "Bearer "+tokenBody.AccessToken)
+	userResp, err := http.DefaultClient.Do(userReq)
+	if err != nil {
+		return model.User{}, err
+	}
+	defer userResp.Body.Close()
+	if userResp.StatusCode < 200 || userResp.StatusCode >= 300 {
+		return model.User{}, fmt.Errorf("github user fetch failed: %s", userResp.Status)
+	}
+	var userBody struct {
+		ID        any    `json:"id"`
+		Login     string `json:"login"`
+		Name      string `json:"name"`
+		AvatarURL string `json:"avatar_url"`
+	}
+	if err := json.NewDecoder(io.LimitReader(userResp.Body, 1<<20)).Decode(&userBody); err != nil {
+		return model.User{}, err
+	}
+	if userBody.Login == "" {
+		return model.User{}, fmt.Errorf("github user response missing login")
+	}
+	return s.store.UpsertUser(store.UserInput{
+		Provider:   "github",
+		ProviderID: fmt.Sprint(userBody.ID),
+		Login:      userBody.Login,
+		Name:       userBody.Name,
+		AvatarURL:  userBody.AvatarURL,
+	})
+}
+
+func (s *Server) ensureStarterTemplates(user model.User) error {
+	if user.UserID == "" {
+		return nil
+	}
+	_, total, err := s.store.ListTemplatesForOwner("", user.UserID, 1, 0, "create_at", "desc")
+	if err != nil {
+		return err
+	}
+	if total > 0 {
+		return nil
+	}
+	for _, input := range starterTemplates(user) {
+		if _, err := s.store.CreateTemplate(input); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func starterTemplates(user model.User) []model.TemplateInput {
+	owner := user.UserID
+	createBy := userActorName(user)
+	return []model.TemplateInput{
+		{
+			TemplateName: "企微-机器人 Markdown",
+			MsgType:      "markdown",
+			Content:      "{\"msgtype\":\"markdown\",\"markdown\":{\"content\":{{json data.text}}}}",
+			Script:       `ctx.text = "# " + (ctx.title || "OpenHook") + "\n\n- 级别: " + (ctx.severity || "info") + "\n- 服务: " + (ctx.service || "-") + "\n- 环境: " + (ctx.environment || "-") + "\n- 时间: " + (ctx.time || "") + "\n\n" + (ctx.description || ""); return true;`,
+			Simulation:   json.RawMessage(`{"title":"OpenHook 告警","severity":"info","service":"openhook","environment":"prod","time":"2026-06-04 00:00:00","description":"GitHub 用户专属企微模板"}`),
+			CreateBy:     createBy,
+			CurrentOwner: owner,
+		},
+		{
+			TemplateName: "Telegram-sendMessage",
+			MsgType:      "markdown",
+			Content:      "{\"chat_id\":{{json data.chatId}},\"text\":{{json data.text}},\"parse_mode\":\"HTML\",\"disable_web_page_preview\":true}",
+			Script:       `const esc = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); ctx.text = "<b>" + esc(ctx.title || "OpenHook") + "</b>\n\nSeverity: " + esc(ctx.severity || "info") + "\nService: " + esc(ctx.service || "-") + "\nEnvironment: " + esc(ctx.environment || "-") + "\n\n" + esc(ctx.description || ""); return true;`,
+			Simulation:   json.RawMessage(`{"chatId":"123456789","title":"OpenHook alert","severity":"info","service":"openhook","environment":"prod","description":"GitHub user owned Telegram template"}`),
+			CreateBy:     createBy,
+			CurrentOwner: owner,
+		},
+		{
+			TemplateName: "QQ-Webhook 文本",
+			MsgType:      "markdown",
+			Content:      "{\"msg_type\":\"text\",\"content\":{{json data.text}}}",
+			Script:       `ctx.text = (ctx.title || "OpenHook") + "\n级别: " + (ctx.severity || "info") + "\n服务: " + (ctx.service || "-") + "\n环境: " + (ctx.environment || "-") + "\n" + (ctx.description || ""); return true;`,
+			Simulation:   json.RawMessage(`{"title":"OpenHook alert","severity":"info","service":"openhook","environment":"prod","description":"QQ webhook bridge text payload"}`),
+			CreateBy:     createBy,
+			CurrentOwner: owner,
+		},
+	}
+}
+
 func (s *Server) handleTemplates(w http.ResponseWriter, r *http.Request, parts []string) {
 	if len(parts) == 0 {
 		switch r.Method {
 		case http.MethodGet:
-			s.listTemplates(w, r)
+			act, ok := s.authorizedActor(w, r)
+			if !ok {
+				return
+			}
+			s.listTemplates(w, r, act)
 		case http.MethodPost:
-			if !s.authorized(w, r) {
+			act, ok := s.authorizedActor(w, r)
+			if !ok {
 				return
 			}
 			var input model.TemplateInput
 			if !decodeJSON(w, r, &input) {
 				return
+			}
+			if !act.admin {
+				input.CreateBy = userActorName(act.user)
+				input.CurrentOwner = act.user.UserID
 			}
 			item, err := s.store.CreateTemplate(input)
 			writeStoreResult(w, item, err, http.StatusCreated)
@@ -109,6 +371,9 @@ func (s *Server) handleTemplates(w http.ResponseWriter, r *http.Request, parts [
 		return
 	}
 	if len(parts) == 1 && parts[0] == "preview" && r.Method == http.MethodPost {
+		if _, ok := s.authorizedActor(w, r); !ok {
+			return
+		}
 		var input struct {
 			Content     string         `json:"content"`
 			Simulation  map[string]any `json:"simulation"`
@@ -124,12 +389,20 @@ func (s *Server) handleTemplates(w http.ResponseWriter, r *http.Request, parts [
 		return
 	}
 	if len(parts) == 1 && parts[0] == "paginated" && r.Method == http.MethodGet {
-		s.listTemplates(w, r)
+		act, ok := s.authorizedActor(w, r)
+		if !ok {
+			return
+		}
+		s.listTemplates(w, r, act)
 		return
 	}
 	templateID := parts[0]
 	if len(parts) == 2 && parts[1] == "render" && r.Method == http.MethodPost {
-		s.renderTemplateByID(w, r, templateID)
+		act, ok := s.authorizedActor(w, r)
+		if !ok {
+			return
+		}
+		s.renderTemplateByID(w, r, templateID, act)
 		return
 	}
 	if len(parts) == 3 && parts[1] == "token" && r.Method == http.MethodPut {
@@ -148,20 +421,42 @@ func (s *Server) handleTemplates(w http.ResponseWriter, r *http.Request, parts [
 	}
 	switch r.Method {
 	case http.MethodGet:
+		act, ok := s.authorizedActor(w, r)
+		if !ok {
+			return
+		}
 		item, err := s.store.GetTemplate(templateID)
+		if err == nil && !s.canUseTemplate(act, item) {
+			err = store.ErrNotFound
+		}
 		writeStoreResult(w, item, err, http.StatusOK)
 	case http.MethodPut:
-		if !s.authorized(w, r) {
+		act, ok := s.authorizedActor(w, r)
+		if !ok {
+			return
+		}
+		if !s.canUseTemplateID(act, templateID) {
+			writeStoreResult(w, nil, store.ErrNotFound, http.StatusOK)
 			return
 		}
 		var input model.TemplateInput
 		if !decodeJSON(w, r, &input) {
 			return
 		}
-		item, err := s.store.UpdateTemplate(templateID, input, input.CreateBy)
+		updateBy := input.CreateBy
+		if !act.admin {
+			updateBy = userActorName(act.user)
+			input.CurrentOwner = act.user.UserID
+		}
+		item, err := s.store.UpdateTemplate(templateID, input, updateBy)
 		writeStoreResult(w, item, err, http.StatusOK)
 	case http.MethodDelete:
-		if !s.authorized(w, r) {
+		act, ok := s.authorizedActor(w, r)
+		if !ok {
+			return
+		}
+		if !s.canUseTemplateID(act, templateID) {
+			writeStoreResult(w, nil, store.ErrNotFound, http.StatusOK)
 			return
 		}
 		err := s.store.DeleteTemplate(templateID)
@@ -171,13 +466,17 @@ func (s *Server) handleTemplates(w http.ResponseWriter, r *http.Request, parts [
 	}
 }
 
-func (s *Server) listTemplates(w http.ResponseWriter, r *http.Request) {
+func (s *Server) listTemplates(w http.ResponseWriter, r *http.Request, act actor) {
 	page := queryInt(r, "page", 1)
 	size := queryInt(r, "size", 100)
 	if page < 1 {
 		page = 1
 	}
-	items, total, err := s.store.ListTemplates(r.URL.Query().Get("search"), size, (page-1)*size, toColumn(r.URL.Query().Get("sortBy")), r.URL.Query().Get("sortOrder"))
+	owner := ""
+	if !act.admin {
+		owner = act.user.UserID
+	}
+	items, total, err := s.store.ListTemplatesForOwner(r.URL.Query().Get("search"), owner, size, (page-1)*size, toColumn(r.URL.Query().Get("sortBy")), r.URL.Query().Get("sortOrder"))
 	if err != nil {
 		writeStoreResult(w, nil, err, http.StatusOK)
 		return
@@ -189,10 +488,14 @@ func (s *Server) listTemplates(w http.ResponseWriter, r *http.Request) {
 	response.OK(w, items)
 }
 
-func (s *Server) renderTemplateByID(w http.ResponseWriter, r *http.Request, templateID string) {
+func (s *Server) renderTemplateByID(w http.ResponseWriter, r *http.Request, templateID string, act actor) {
 	template, err := s.store.GetTemplate(templateID)
 	if err != nil {
 		writeStoreResult(w, nil, err, http.StatusOK)
+		return
+	}
+	if !s.canUseTemplate(act, template) {
+		writeStoreResult(w, nil, store.ErrNotFound, http.StatusOK)
 		return
 	}
 	body, ok := decodeBodyMap(w, r)
@@ -209,12 +512,15 @@ func (s *Server) handleTokens(w http.ResponseWriter, r *http.Request, parts []st
 			response.Error(w, http.StatusMethodNotAllowed, "")
 			return
 		}
+		if !s.authorizedAdmin(w, r) {
+			return
+		}
 		items, err := s.store.ListTokens()
 		writeStoreResult(w, items, err, http.StatusOK)
 		return
 	}
 	if len(parts) == 1 && parts[0] == "create" && r.Method == http.MethodPost {
-		if !s.authorized(w, r) {
+		if !s.authorizedAdmin(w, r) {
 			return
 		}
 		var input model.TokenInput
@@ -228,10 +534,13 @@ func (s *Server) handleTokens(w http.ResponseWriter, r *http.Request, parts []st
 	token := parts[0]
 	switch r.Method {
 	case http.MethodGet:
+		if !s.authorizedAdmin(w, r) {
+			return
+		}
 		item, err := s.store.GetToken(token)
 		writeStoreResult(w, item, err, http.StatusOK)
 	case http.MethodPost:
-		if !s.authorized(w, r) {
+		if !s.authorizedAdmin(w, r) {
 			return
 		}
 		var input model.TokenInput
@@ -241,7 +550,7 @@ func (s *Server) handleTokens(w http.ResponseWriter, r *http.Request, parts []st
 		item, err := s.store.UpdateToken(token, input)
 		writeStoreResult(w, item, err, http.StatusOK)
 	case http.MethodDelete:
-		if !s.authorized(w, r) {
+		if !s.authorizedAdmin(w, r) {
 			return
 		}
 		err := s.store.DeleteToken(token)
@@ -255,15 +564,32 @@ func (s *Server) handleRoutes(w http.ResponseWriter, r *http.Request, parts []st
 	if len(parts) == 0 {
 		switch r.Method {
 		case http.MethodGet:
-			items, err := s.store.ListRoutes()
+			act, ok := s.authorizedActor(w, r)
+			if !ok {
+				return
+			}
+			if act.admin {
+				items, err := s.store.ListRoutes()
+				writeStoreResult(w, items, err, http.StatusOK)
+				return
+			}
+			items, err := s.store.ListRoutesForOwner(act.user.UserID)
 			writeStoreResult(w, items, err, http.StatusOK)
 		case http.MethodPost:
-			if !s.authorized(w, r) {
+			act, ok := s.authorizedActor(w, r)
+			if !ok {
 				return
 			}
 			var input model.RouteInput
 			if !decodeJSON(w, r, &input) {
 				return
+			}
+			if !act.admin {
+				if !s.canUseTemplateID(act, input.TemplateID) {
+					writeStoreResult(w, nil, store.ErrNotFound, http.StatusOK)
+					return
+				}
+				input.OwnerUserID = act.user.UserID
 			}
 			item, err := s.store.CreateRoute(input)
 			writeStoreResult(w, item, err, http.StatusCreated)
@@ -279,20 +605,46 @@ func (s *Server) handleRoutes(w http.ResponseWriter, r *http.Request, parts []st
 	}
 	switch r.Method {
 	case http.MethodGet:
-		item, err := s.store.GetRoute(routeID)
+		act, ok := s.authorizedActor(w, r)
+		if !ok {
+			return
+		}
+		item, err := s.routeForActor(act, routeID)
 		writeStoreResult(w, item, err, http.StatusOK)
 	case http.MethodPut:
-		if !s.authorized(w, r) {
+		act, ok := s.authorizedActor(w, r)
+		if !ok {
+			return
+		}
+		current, err := s.routeForActor(act, routeID)
+		if err != nil {
+			writeStoreResult(w, nil, err, http.StatusOK)
 			return
 		}
 		var input model.RouteInput
 		if !decodeJSON(w, r, &input) {
 			return
 		}
+		if !act.admin {
+			templateID := input.TemplateID
+			if templateID == "" {
+				templateID = current.TemplateID
+			}
+			if !s.canUseTemplateID(act, templateID) {
+				writeStoreResult(w, nil, store.ErrNotFound, http.StatusOK)
+				return
+			}
+			input.OwnerUserID = current.OwnerUserID
+		}
 		item, err := s.store.UpdateRoute(routeID, input)
 		writeStoreResult(w, item, err, http.StatusOK)
 	case http.MethodDelete:
-		if !s.authorized(w, r) {
+		act, ok := s.authorizedActor(w, r)
+		if !ok {
+			return
+		}
+		if _, err := s.routeForActor(act, routeID); err != nil {
+			writeStoreResult(w, nil, err, http.StatusOK)
 			return
 		}
 		err := s.store.DeleteRoute(routeID)
@@ -306,10 +658,13 @@ func (s *Server) handleMiddlewares(w http.ResponseWriter, r *http.Request, parts
 	if len(parts) == 0 {
 		switch r.Method {
 		case http.MethodGet:
+			if !s.authorizedAdmin(w, r) {
+				return
+			}
 			items, err := s.store.ListMiddlewares()
 			writeStoreResult(w, items, err, http.StatusOK)
 		case http.MethodPost:
-			if !s.authorized(w, r) {
+			if !s.authorizedAdmin(w, r) {
 				return
 			}
 			var input model.CustomMiddlewareInput
@@ -326,10 +681,13 @@ func (s *Server) handleMiddlewares(w http.ResponseWriter, r *http.Request, parts
 	id := parts[0]
 	switch r.Method {
 	case http.MethodGet:
+		if !s.authorizedAdmin(w, r) {
+			return
+		}
 		item, err := s.store.GetMiddleware(id)
 		writeStoreResult(w, item, err, http.StatusOK)
 	case http.MethodPut:
-		if !s.authorized(w, r) {
+		if !s.authorizedAdmin(w, r) {
 			return
 		}
 		var input model.CustomMiddlewareInput
@@ -339,7 +697,7 @@ func (s *Server) handleMiddlewares(w http.ResponseWriter, r *http.Request, parts
 		item, err := s.store.UpdateMiddleware(id, input)
 		writeStoreResult(w, item, err, http.StatusOK)
 	case http.MethodDelete:
-		if !s.authorized(w, r) {
+		if !s.authorizedAdmin(w, r) {
 			return
 		}
 		err := s.store.DeleteMiddleware(id)
@@ -353,10 +711,13 @@ func (s *Server) handleRuleSets(kind string, w http.ResponseWriter, r *http.Requ
 	if len(parts) == 0 {
 		switch r.Method {
 		case http.MethodGet:
+			if !s.authorizedAdmin(w, r) {
+				return
+			}
 			items, err := s.store.ListRuleSets(kind, r.URL.Query())
 			writeStoreResult(w, items, err, http.StatusOK)
 		case http.MethodPost:
-			if !s.authorized(w, r) {
+			if !s.authorizedAdmin(w, r) {
 				return
 			}
 			var input model.RuleSetInput
@@ -371,6 +732,9 @@ func (s *Server) handleRuleSets(kind string, w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if len(parts) == 1 && parts[0] == "one" && r.Method == http.MethodGet {
+		if !s.authorizedAdmin(w, r) {
+			return
+		}
 		item, err := s.store.GetActiveRuleSet(kind, r.URL.Query())
 		writeStoreResult(w, item, err, http.StatusOK)
 		return
@@ -378,7 +742,7 @@ func (s *Server) handleRuleSets(kind string, w http.ResponseWriter, r *http.Requ
 	id := parts[0]
 	switch r.Method {
 	case http.MethodPut:
-		if !s.authorized(w, r) {
+		if !s.authorizedAdmin(w, r) {
 			return
 		}
 		var input model.RuleSetInput
@@ -388,7 +752,7 @@ func (s *Server) handleRuleSets(kind string, w http.ResponseWriter, r *http.Requ
 		item, err := s.store.UpdateRuleSet(kind, id, input)
 		writeStoreResult(w, item, err, http.StatusOK)
 	case http.MethodDelete:
-		if !s.authorized(w, r) {
+		if !s.authorizedAdmin(w, r) {
 			return
 		}
 		err := s.store.DeleteRuleSet(kind, id)
@@ -403,6 +767,9 @@ func (s *Server) handleDeliveries(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusMethodNotAllowed, "")
 		return
 	}
+	if !s.authorizedAdmin(w, r) {
+		return
+	}
 	items, err := s.store.ListDeliveries(queryInt(r, "limit", 50), queryInt(r, "offset", 0))
 	writeStoreResult(w, items, err, http.StatusOK)
 }
@@ -412,6 +779,19 @@ func (s *Server) handleTemplateWebhook(w http.ResponseWriter, r *http.Request, t
 		response.Error(w, http.StatusMethodNotAllowed, "")
 		return
 	}
+	act, ok := s.authorizedActor(w, r)
+	if !ok {
+		return
+	}
+	template, err := s.store.GetTemplate(templateID)
+	if err != nil {
+		writeStoreResult(w, nil, err, http.StatusOK)
+		return
+	}
+	if !s.canUseTemplate(act, template) {
+		writeStoreResult(w, nil, store.ErrNotFound, http.StatusOK)
+		return
+	}
 	body, ok := decodeBodyMap(w, r)
 	if !ok {
 		return
@@ -419,11 +799,6 @@ func (s *Server) handleTemplateWebhook(w http.ResponseWriter, r *http.Request, t
 	targets := splitCSV(r.URL.Query().Get("webhookUrls"))
 	if len(targets) == 0 {
 		response.Error(w, http.StatusBadRequest, "webhookUrls is required")
-		return
-	}
-	template, err := s.store.GetTemplate(templateID)
-	if err != nil {
-		writeStoreResult(w, nil, err, http.StatusOK)
 		return
 	}
 	requestID := requestID(r)
@@ -571,7 +946,13 @@ func (s *Server) compatSend(w http.ResponseWriter, r *http.Request, source strin
 			writeStoreResult(w, nil, err, http.StatusOK)
 			return
 		}
+		if !route.Enabled {
+			response.Error(w, http.StatusForbidden, "route is disabled")
+			return
+		}
 		targets = route.TargetURLs
+	} else if !s.authorizedAdmin(w, r) {
+		return
 	}
 	if len(targets) == 0 {
 		response.Error(w, http.StatusBadRequest, "webhookUrls or routeId is required")
@@ -583,14 +964,116 @@ func (s *Server) compatSend(w http.ResponseWriter, r *http.Request, source strin
 }
 
 func (s *Server) authorized(w http.ResponseWriter, r *http.Request) bool {
-	if s.cfg.AdminToken == "" {
+	_, ok := s.authorizedActor(w, r)
+	return ok
+}
+
+func (s *Server) authorizedAdmin(w http.ResponseWriter, r *http.Request) bool {
+	act, ok := s.authorizedActor(w, r)
+	if !ok {
+		return false
+	}
+	if act.admin {
 		return true
 	}
-	if r.Header.Get("X-OpenHook-Admin-Token") == s.cfg.AdminToken {
-		return true
-	}
-	response.Error(w, http.StatusUnauthorized, "invalid admin token")
+	response.Error(w, http.StatusForbidden, "admin token required")
 	return false
+}
+
+func (s *Server) authorizedActor(w http.ResponseWriter, r *http.Request) (actor, bool) {
+	act, ok := s.actorFromRequest(r)
+	if ok {
+		return act, true
+	}
+	response.Error(w, http.StatusUnauthorized, "login required")
+	return actor{}, false
+}
+
+func (s *Server) actorFromRequest(r *http.Request) (actor, bool) {
+	if s.cfg.AdminToken != "" && r.Header.Get("X-OpenHook-Admin-Token") == s.cfg.AdminToken {
+		return actor{admin: true}, true
+	}
+	if cookie, err := r.Cookie(sessionCookieName); err == nil {
+		if session, err := s.store.GetSession(cookie.Value); err == nil {
+			return actor{user: session.User}, true
+		}
+	}
+	if !s.authEnabled() {
+		return actor{admin: true}, true
+	}
+	return actor{}, false
+}
+
+func (s *Server) authEnabled() bool {
+	return s.cfg.AdminToken != "" || s.cfg.GitHubClientID != "" || s.cfg.GitHubClientSecret != ""
+}
+
+func (s *Server) githubEnabled() bool {
+	return s.cfg.GitHubClientID != "" && s.cfg.GitHubClientSecret != ""
+}
+
+func (s *Server) canUseTemplateID(act actor, templateID string) bool {
+	template, err := s.store.GetTemplate(templateID)
+	return err == nil && s.canUseTemplate(act, template)
+}
+
+func (s *Server) canUseTemplate(act actor, template model.Template) bool {
+	return act.admin || (act.user.UserID != "" && template.CurrentOwner == act.user.UserID)
+}
+
+func (s *Server) routeForActor(act actor, routeID string) (model.Route, error) {
+	if act.admin {
+		return s.store.GetRoute(routeID)
+	}
+	return s.store.GetRouteForOwner(routeID, act.user.UserID)
+}
+
+func userActorName(user model.User) string {
+	if user.Login != "" {
+		return "github:" + user.Login
+	}
+	return user.UserID
+}
+
+func (s *Server) cookie(name, value string, ttl time.Duration) *http.Cookie {
+	if ttl <= 0 {
+		ttl = 30 * 24 * time.Hour
+	}
+	return &http.Cookie{
+		Name:     name,
+		Value:    value,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   strings.HasPrefix(s.cfg.PublicBaseURL, "https://"),
+		Expires:  time.Now().Add(ttl),
+		MaxAge:   int(ttl.Seconds()),
+	}
+}
+
+func (s *Server) expiredCookie(name string) *http.Cookie {
+	return &http.Cookie{
+		Name:     name,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   strings.HasPrefix(s.cfg.PublicBaseURL, "https://"),
+		Expires:  time.Unix(0, 0),
+		MaxAge:   -1,
+	}
+}
+
+func randomToken(prefix string) string {
+	var buf [24]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return newIDLike(prefix)
+	}
+	return prefix + "_" + base64.RawURLEncoding.EncodeToString(buf[:])
+}
+
+func newIDLike(prefix string) string {
+	return prefix + "_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 }
 
 func (s *Server) withCORS(next http.Handler) http.Handler {
