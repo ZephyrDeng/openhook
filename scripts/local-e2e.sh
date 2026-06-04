@@ -166,7 +166,7 @@ route_resp="$(curl -fsS "${APP_URL}/api/routes" \
   -d "{\"name\":\"e2e-route\",\"templateId\":\"${template_id}\",\"targetUrls\":[\"${RECEIVER_URL}\"],\"headers\":{\"X-E2E-Route\":\"configured\"},\"middlewareIds\":[\"${middleware_id}\"],\"mode\":\"envelope\",\"enabled\":true}")"
 route_id="$(printf '%s' "${route_resp}" | json_get data.routeId)"
 
-route_deliver_resp="$(curl -fsS "${APP_URL}/api/routes/${route_id}/deliver" \
+route_deliver_resp="$(curl -fsS "${APP_URL}/webhook/routes/${route_id}" \
   -H 'Content-Type: application/json' \
   -H 'X-Request-ID: e2e-route-request' \
   -d '{"title":"Checkout down","service":"checkout"}')"

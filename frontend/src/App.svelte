@@ -10,9 +10,10 @@
   import Tokens from './pages/Tokens.svelte'
   import Deliveries from './pages/Deliveries.svelte'
   import Settings from './pages/Settings.svelte'
+  import Guide from './pages/Guide.svelte'
   import { auth } from './stores/api.js'
   import { toast } from './stores/toast.js'
-  import { Blocks, FileText, Github, KeyRound, LogIn, Route, Settings as SettingsIcon, Truck } from 'lucide-svelte'
+  import { Blocks, BookOpen, CheckCircle2, FileText, Github, KeyRound, LogIn, Route, Settings as SettingsIcon, Truck, Workflow } from 'lucide-svelte'
 
   let currentPage = $state('templates')
   let sidebarCollapsed = $state(false)
@@ -28,6 +29,7 @@
   const mobileNavItems = $derived([
     { id: 'templates', label: '模板', icon: FileText },
     { id: 'routes', label: '路由', icon: Route },
+    { id: 'guide', label: '指南', icon: BookOpen },
     ...(isAdmin ? [
       { id: 'middlewares', label: '中间件', icon: Blocks },
       { id: 'tokens', label: '令牌', icon: KeyRound },
@@ -106,7 +108,9 @@
   }
 
   function startGitHubLogin() {
-    window.location.href = '/login/github?returnTo=/' 
+    localStorage.removeItem('openhook-token')
+    adminToken = ''
+    window.location.href = '/auth/github/start?returnTo=/'
   }
 
   function moveTo(path) {
@@ -167,50 +171,82 @@
     <div class="w-8 h-8 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin"></div>
   </div>
 {:else if authState.authRequired && !authState.authenticated}
-  <div class="min-h-[100dvh] flex items-center justify-center bg-[var(--color-bg-primary)] px-4 page-transition">
-    <div class="w-full max-w-sm card">
-      <div class="flex items-center gap-3 mb-6">
-        <div class="w-10 h-10 rounded-lg bg-[var(--color-accent)] flex items-center justify-center">
-          <KeyRound size={20} class="text-white" />
+  <div class="login-hero page-transition">
+    <section class="login-hero-content" aria-label="OpenHook 登录">
+      <div class="login-hero-copy">
+        <div class="login-brand-mark">
+          <Workflow size={24} />
         </div>
-        <div>
-          <h1 class="text-lg font-semibold text-[var(--color-text-primary)]">登录 OpenHook</h1>
-          <p class="text-sm text-[var(--color-text-secondary)]">{authState.githubEnabled ? 'GitHub 自动注册登录' : '管理令牌'}</p>
+        <p class="login-eyebrow">Webhook forwarding console</p>
+        <h1>OpenHook</h1>
+        <p class="login-lede">把告警 payload 渲染成可读消息，再按路由投递到企业微信、Telegram、QQ 或任意 Webhook。</p>
+        <div class="login-flow" aria-label="核心链路">
+          <div>
+            <span>01</span>
+            <strong>模板</strong>
+            <small>{'{'}{'{'}data.title{'}'}{'}'}</small>
+          </div>
+          <div>
+            <span>02</span>
+            <strong>路由</strong>
+            <small>routeId + targetUrls</small>
+          </div>
+          <div>
+            <span>03</span>
+            <strong>投递</strong>
+            <small>delivery logs</small>
+          </div>
         </div>
       </div>
-      {#if authError}
-        <div class="mb-4 text-sm text-[var(--color-error)] bg-[var(--color-error-bg)] rounded-md px-3 py-2 animate-[shakeIn_200ms_ease-out]">{authError}</div>
-      {/if}
-      {#if authState.githubEnabled}
-        <button class="btn btn-primary w-full" onclick={startGitHubLogin}>
-          <Github size={16} />
-          GitHub 注册或登录
-        </button>
-        <div class="mt-2 text-xs text-[var(--color-text-tertiary)] font-mono">/login/github</div>
-        <div class="flex items-center gap-3 my-4">
-          <div class="h-px flex-1 bg-[var(--color-border-subtle)]"></div>
-          <span class="text-xs text-[var(--color-text-tertiary)]">或</span>
-          <div class="h-px flex-1 bg-[var(--color-border-subtle)]"></div>
+
+      <div class="login-panel" aria-label="登录面板">
+        <div class="login-panel-header">
+          <div class="login-panel-icon">
+            <KeyRound size={20} />
+          </div>
+          <div>
+            <h2>登录控制台</h2>
+            <p>{authState.githubEnabled ? 'GitHub OAuth 或管理令牌' : '管理令牌'}</p>
+          </div>
         </div>
-      {/if}
-      <form class="space-y-3" onsubmit={handleAdminLogin}>
-        <div>
-          <label for="admin-token-login" class="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">管理令牌</label>
-          <input
-            id="admin-token-login"
-            type="password"
-            class="input"
-            bind:value={adminToken}
-            autocomplete="current-password"
-            placeholder="X-OpenHook-Admin-Token"
-          />
-        </div>
-        <button class="btn btn-primary w-full" type="submit" disabled={loggingIn}>
-          <LogIn size={16} />
-          {loggingIn ? '登录中' : '管理令牌登录'}
-        </button>
-      </form>
-    </div>
+
+        {#if authError}
+          <div class="login-error animate-[shakeIn_200ms_ease-out]">{authError}</div>
+        {/if}
+
+        {#if authState.githubEnabled}
+          <button class="btn btn-primary login-primary-action" onclick={startGitHubLogin}>
+            <Github size={16} />
+            GitHub 登录
+          </button>
+          <div class="login-oauth-note">
+            <CheckCircle2 size={14} />
+            <span>登录完成后自动回到控制台</span>
+          </div>
+          <div class="login-divider">
+            <span>或使用管理令牌</span>
+          </div>
+        {/if}
+
+        <form class="login-token-form" onsubmit={handleAdminLogin}>
+          <div>
+            <label for="admin-token-login">管理令牌</label>
+            <input
+              id="admin-token-login"
+              type="password"
+              class="input"
+              bind:value={adminToken}
+              autocomplete="current-password"
+              placeholder="X-OpenHook-Admin-Token"
+            />
+          </div>
+          <button class="btn btn-secondary login-token-action" type="submit" disabled={loggingIn}>
+            <LogIn size={16} />
+            {loggingIn ? '登录中' : '令牌登录'}
+          </button>
+        </form>
+      </div>
+    </section>
   </div>
 {:else}
   <div class="app-shell">
@@ -229,6 +265,8 @@
             <Routes onEdit={handleEditRoute} onNew={handleNewRoute} />
           {:else if currentPage === 'route-editor'}
             <RouteEditor route={editingRoute} onBack={handleBackToRoutes} allowMiddlewares={authState.admin || authState.authRequired === false} />
+          {:else if currentPage === 'guide'}
+            <Guide />
           {:else if currentPage === 'middlewares'}
             <Middlewares />
           {:else if currentPage === 'tokens'}

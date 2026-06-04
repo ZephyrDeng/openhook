@@ -91,8 +91,8 @@ First-time server bootstrap for a fresh Ubuntu host:
 
 ```bash
 OPENHOOK_DEPLOY_HOST=openhook \
-OPENHOOK_DOMAIN=commute-planner.site \
-OPENHOOK_PUBLIC_BASE_URL=https://commute-planner.site \
+OPENHOOK_DOMAIN=your-domain.example \
+OPENHOOK_PUBLIC_BASE_URL=https://your-domain.example \
 OPENHOOK_TLS_EMAIL=you@example.com \
 OPENHOOK_ENABLE_TLS=1 \
 scripts/bootstrap-openhook-server.sh
@@ -111,7 +111,7 @@ Daily deploy for an initialized host:
 
 ```bash
 OPENHOOK_DEPLOY_HOST=openhook \
-OPENHOOK_PUBLIC_URL=https://commute-planner.site \
+OPENHOOK_PUBLIC_URL=https://your-domain.example \
 scripts/deploy-openhook.sh
 ```
 
@@ -120,6 +120,7 @@ The script builds the frontend, runs Go tests, runs local e2e, cross-compiles a 
 One-command production deploy with WeCom production smoke and readiness audit:
 
 ```bash
+OPENHOOK_PUBLIC_URL=https://your-domain.example \
 scripts/deploy-production.sh
 ```
 
@@ -129,14 +130,14 @@ The same path is available through:
 make deploy-production
 ```
 
-`scripts/deploy-production.sh` defaults to `OPENHOOK_DEPLOY_HOST=openhook`, `OPENHOOK_PUBLIC_URL=https://commute-planner.site`, `OPENHOOK_REQUIRE_GITHUB=1`, `OPENHOOK_RUN_PRODUCTION_SMOKE=1`, `OPENHOOK_RUN_PRODUCTION_READINESS=1`, and the current production WeCom route ID. Override any of those environment variables when deploying a different host or route.
+`scripts/deploy-production.sh` requires `OPENHOOK_PUBLIC_URL` and defaults to `OPENHOOK_DEPLOY_HOST=openhook`, `OPENHOOK_REQUIRE_GITHUB=1`, `OPENHOOK_RUN_PRODUCTION_SMOKE=1`, `OPENHOOK_RUN_PRODUCTION_READINESS=1`, and the current production WeCom route ID. Override any of those environment variables when deploying a different host or route.
 
 To enable GitHub registration/login during the same deploy:
 
 ```bash
 OPENHOOK_DEPLOY_HOST=openhook \
-OPENHOOK_PUBLIC_URL=https://commute-planner.site \
-OPENHOOK_PUBLIC_BASE_URL=https://commute-planner.site \
+OPENHOOK_PUBLIC_URL=https://your-domain.example \
+OPENHOOK_PUBLIC_BASE_URL=https://your-domain.example \
 OPENHOOK_GITHUB_CLIENT_ID=github-oauth-client-id \
 OPENHOOK_GITHUB_CLIENT_SECRET=github-oauth-client-secret \
 OPENHOOK_REQUIRE_GITHUB=1 \
@@ -148,6 +149,7 @@ scripts/deploy-openhook.sh
 Production smoke after deploy:
 
 ```bash
+OPENHOOK_API_BASE=https://your-domain.example \
 OPENHOOK_REQUIRE_GITHUB=1 \
 OPENHOOK_WECOM_ROUTE_ID=rt_xxx \
 QQ_APP_ID=qq-bot-app-id \
@@ -161,6 +163,7 @@ The smoke script checks `/health`, `/api/auth/me`, WeCom when `OPENHOOK_WECOM_RO
 Production readiness audit:
 
 ```bash
+OPENHOOK_API_BASE=https://your-domain.example \
 scripts/production-readiness.sh
 ```
 
@@ -173,7 +176,7 @@ OPENHOOK_ADDR=:8080
 OPENHOOK_DB=/var/lib/openhook/openhook.db
 OPENHOOK_REQUEST_TIMEOUT=10
 OPENHOOK_ADMIN_TOKEN=replace-with-a-long-random-token
-OPENHOOK_PUBLIC_BASE_URL=https://commute-planner.site
+OPENHOOK_PUBLIC_BASE_URL=https://your-domain.example
 OPENHOOK_GITHUB_CLIENT_ID=github-oauth-client-id
 OPENHOOK_GITHUB_CLIENT_SECRET=github-oauth-client-secret
 OPENHOOK_SESSION_TTL=2592000
@@ -206,7 +209,7 @@ curl -s http://localhost:8080/api/routes \
 Deliver through the route:
 
 ```bash
-curl -s http://localhost:8080/api/routes/{routeId}/deliver \
+curl -s http://localhost:8080/webhook/routes/{routeId} \
   -H 'Content-Type: application/json' \
   -d '{
     "title": "Checkout error",
@@ -227,7 +230,7 @@ curl -s 'http://localhost:8080/webhook/{templateId}?webhookUrls=https://example.
 When authentication is enabled, this direct template webhook requires an admin token or a logged-in user session that owns the template. Production integrations should use route delivery:
 
 ```text
-POST /api/routes/{routeId}/deliver
+POST /webhook/routes/{routeId}
 ```
 
 ## Provider Templates
@@ -470,7 +473,7 @@ Routes:
 - `GET /api/routes/{routeId}`
 - `PUT /api/routes/{routeId}`
 - `DELETE /api/routes/{routeId}`
-- `POST /api/routes/{routeId}/deliver`
+- `POST /webhook/routes/{routeId}`
 
 Middleware:
 
@@ -496,6 +499,7 @@ These rule-storage APIs are kept for future delivery filtering/dedup use cases a
 
 Webhook compatibility:
 
+- `POST /webhook/routes/{routeId}`
 - `POST /webhook/{templateId}?webhookUrls=url1,url2`
 - `POST /webhook/gitlab?webhookUrls=url1,url2`
 - `POST /webhook/sentry?webhookUrls=url1,url2`

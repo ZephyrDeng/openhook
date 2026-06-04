@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -34,6 +35,7 @@ type Server struct {
 const sessionCookieName = "openhook_session"
 const oauthStateCookieName = "openhook_oauth_state"
 const oauthReturnCookieName = "openhook_oauth_return"
+const defaultRepositoryURL = "https://github.com/ZephyrDeng/openhook"
 
 type actor struct {
 	admin bool
@@ -78,6 +80,8 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		s.handleGitlab(w, r)
 	case len(parts) == 2 && parts[0] == "webhook" && parts[1] == "sentry":
 		s.handleSentry(w, r)
+	case len(parts) == 3 && parts[0] == "webhook" && parts[1] == "routes":
+		s.handleRouteDeliver(w, r, parts[2])
 	case len(parts) >= 1 && parts[0] == "api":
 		s.routeAPI(w, r, parts[1:])
 	case len(parts) == 2 && parts[0] == "webhook":
@@ -97,6 +101,8 @@ func (s *Server) routeAPI(w http.ResponseWriter, r *http.Request, parts []string
 		return
 	}
 	switch parts[0] {
+	case "meta":
+		s.handleMeta(w, r)
 	case "auth":
 		s.handleAuthAPI(w, r, parts[1:])
 	case "templates", "message-template":
@@ -118,6 +124,52 @@ func (s *Server) routeAPI(w http.ResponseWriter, r *http.Request, parts []string
 	default:
 		response.Error(w, http.StatusNotFound, "api route not found")
 	}
+}
+
+func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		response.Error(w, http.StatusMethodNotAllowed, "")
+		return
+	}
+	version, commit, modified := buildVersion()
+	response.OK(w, map[string]any{
+		"name":       "OpenHook",
+		"repository": firstNonEmpty(s.cfg.RepositoryURL, defaultRepositoryURL),
+		"version":    version,
+		"commit":     commit,
+		"modified":   modified,
+	})
+}
+
+func buildVersion() (string, string, bool) {
+	version := "dev"
+	commit := ""
+	modified := false
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return version, commit, modified
+	}
+	if info.Main.Version != "" && info.Main.Version != "(devel)" {
+		version = info.Main.Version
+	}
+	for _, setting := range info.Settings {
+		switch setting.Key {
+		case "vcs.revision":
+			commit = setting.Value
+		case "vcs.modified":
+			modified = setting.Value == "true"
+		}
+	}
+	if commit != "" {
+		version = commit
+		if len(version) > 7 {
+			version = version[:7]
+		}
+		if modified {
+			version += "+dirty"
+		}
+	}
+	return version, commit, modified
 }
 
 func (s *Server) handleAuthAPI(w http.ResponseWriter, r *http.Request, parts []string) {
@@ -1046,13 +1098,13 @@ func (s *Server) authorizedActor(w http.ResponseWriter, r *http.Request) (actor,
 }
 
 func (s *Server) actorFromRequest(r *http.Request) (actor, bool) {
-	if s.cfg.AdminToken != "" && r.Header.Get("X-OpenHook-Admin-Token") == s.cfg.AdminToken {
-		return actor{admin: true}, true
-	}
 	if cookie, err := r.Cookie(sessionCookieName); err == nil {
 		if session, err := s.store.GetSession(cookie.Value); err == nil {
 			return actor{user: session.User}, true
 		}
+	}
+	if s.cfg.AdminToken != "" && r.Header.Get("X-OpenHook-Admin-Token") == s.cfg.AdminToken {
+		return actor{admin: true}, true
 	}
 	if !s.authEnabled() {
 		return actor{admin: true}, true

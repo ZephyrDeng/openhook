@@ -36,6 +36,10 @@ export const auth = {
   logout: () => api('/api/auth/logout', { method: 'POST' }),
 }
 
+export const meta = {
+  get: () => api('/api/meta'),
+}
+
 export const templates = {
   list: (search = '') => api(`/api/templates${search ? `?search=${encodeURIComponent(search)}` : ''}`),
   get: (id) => api(`/api/templates/${id}`),

@@ -1,7 +1,7 @@
 <script>
   import { 
     FileText, Route, Blocks, KeyRound, Truck, Settings,
-    ChevronLeft, ChevronRight, LogOut, Shield, UserCircle
+    BookOpen, ChevronLeft, ChevronRight, LogOut, Shield, UserCircle
   } from 'lucide-svelte'
 
   let {
@@ -15,6 +15,7 @@
   const navItems = $derived([
     { id: 'templates', label: '消息模板', icon: FileText },
     { id: 'routes', label: '路由', icon: Route },
+    { id: 'guide', label: '使用指南', icon: BookOpen },
     ...(isAdmin ? [
       { id: 'middlewares', label: '中间件', icon: Blocks },
       { id: 'tokens', label: '令牌', icon: KeyRound },

@@ -2,7 +2,7 @@
   import { routes, templates, middlewares as mwApi } from '../stores/api.js'
   import { toast } from '../stores/toast.js'
   import FormField from '../components/FormField.svelte'
-  import { ArrowLeft, Save, Plus, Trash2, Send, X, MessagesSquare } from 'lucide-svelte'
+  import { ArrowLeft, Copy, Save, Plus, Trash2, Send, X, MessagesSquare } from 'lucide-svelte'
   import Modal from '../components/Modal.svelte'
 
   let { route = null, onBack, allowMiddlewares = false } = $props()
@@ -129,6 +129,12 @@
 
   const activeProvider = $derived(selectedProviderProfile())
   const targetUrlPlaceholder = $derived(activeProvider?.targetUrlHint || 'https://example.com/webhook')
+
+  const publicWebhookUrl = $derived(
+    isEdit && typeof window !== 'undefined'
+      ? `${window.location.origin}/webhook/routes/${route.routeId}`
+      : ''
+  )
 
   const errors = $derived({
     name: touched.name && !form.name.trim() ? '请输入路由名称' : '',
@@ -278,6 +284,16 @@
     return summary || result.message
   }
 
+  async function copyPublicWebhookUrl() {
+    if (!publicWebhookUrl) return
+    try {
+      await navigator.clipboard.writeText(publicWebhookUrl)
+      toast.success('对外 Webhook 地址已复制')
+    } catch (e) {
+      toast.error('复制失败: ' + e.message)
+    }
+  }
+
   $effect(() => {
     loadRefs()
   })
@@ -344,6 +360,27 @@
           placeholder="例如: generic-alert-route"
         />
       </FormField>
+
+      <div class="form-section">
+        <div class="route-webhook-card">
+          <div>
+            <span class="form-section-title">对外 Webhook 地址</span>
+            <p class="route-webhook-desc">把这个地址提供给上游系统。对方使用 POST JSON 请求，OpenHook 会用当前路由的模板渲染消息并转发。</p>
+          </div>
+          {#if isEdit}
+            <div class="route-webhook-copy-row">
+              <code>{publicWebhookUrl}</code>
+              <button class="btn btn-secondary" type="button" onclick={copyPublicWebhookUrl}>
+                <Copy size={14} />
+                复制地址
+              </button>
+            </div>
+          {:else}
+            <p class="route-webhook-pending">保存路由后生成 routeId，并在这里显示可复制的对外 Webhook 地址。</p>
+          {/if}
+          <p class="route-webhook-hint">下方的目标 Webhook 地址填写下游接收方，例如企业微信群机器人、Telegram 网关、QQ 网关或业务系统 Webhook。</p>
+        </div>
+      </div>
 
       <FormField label="消息模板" forId="route-template" required error={errors.templateId} helper="选择要使用的消息模板">
         <select id="route-template" class="input" bind:value={form.templateId} onchange={handleTemplateChange}>

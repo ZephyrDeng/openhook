@@ -1,11 +1,27 @@
 <script>
+  import { onMount } from 'svelte'
+  import { meta } from '../stores/api.js'
   import { toast } from '../stores/toast.js'
   import FormField from '../components/FormField.svelte'
-  import { KeyRound, Globe, Save } from 'lucide-svelte'
+  import { KeyRound, Save } from 'lucide-svelte'
 
   let token = $state(localStorage.getItem('openhook-token') || '')
   let apiBaseUrl = $state(localStorage.getItem('openhook-api-base') || '')
   let saving = $state(false)
+  let appMeta = $state({ name: 'OpenHook', repository: '', version: 'dev' })
+
+  onMount(() => {
+    loadMeta()
+  })
+
+  async function loadMeta() {
+    try {
+      const res = await meta.get()
+      appMeta = { ...appMeta, ...(res.data || {}) }
+    } catch {
+      appMeta = { ...appMeta, version: 'dev' }
+    }
+  }
 
   function save() {
     saving = true
@@ -68,8 +84,10 @@
         <h3 class="text-sm font-semibold text-[var(--color-text-primary)] mb-2">关于 OpenHook</h3>
         <p class="text-sm text-[var(--color-text-secondary)] leading-relaxed">Webhook 转发服务，支持消息模板、路由转发、JavaScript 中间件、投递日志。</p>
         <div class="flex items-center gap-4 mt-3 pt-3 border-t border-[var(--color-border-subtle)]">
-          <span class="text-xs text-[var(--color-text-tertiary)]">v0.1.0</span>
-          <a href="https://github.com/ZephyrDeng/openhook" target="_blank" class="text-xs text-[var(--color-accent)] hover:underline transition-colors">GitHub</a>
+          <span class="text-xs text-[var(--color-text-tertiary)]">{appMeta.version}</span>
+          {#if appMeta.repository}
+            <a href={appMeta.repository} target="_blank" rel="noreferrer" class="text-xs text-[var(--color-accent)] hover:underline transition-colors">GitHub</a>
+          {/if}
         </div>
       </div>
     </div>
