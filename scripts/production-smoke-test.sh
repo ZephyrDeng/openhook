@@ -38,6 +38,16 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(404)
         self.end_headers()
 
+    def do_POST(self):
+        if self.path == "/app/getAppAccessToken":
+            self.send_json({"access_token": "mock-production-token", "expires_in": 7200})
+            return
+        if self.path == "/v2/users/test-openid/messages":
+            self.send_json({"id": "msg-456"})
+            return
+        self.send_response(404)
+        self.end_headers()
+
     def send_json(self, body):
         raw = json.dumps(body).encode()
         self.send_response(200)
@@ -70,6 +80,24 @@ grep -q "HEALTH_OK" "${TMP_DIR}/out"
 grep -q "AUTH_OK githubEnabled=true" "${TMP_DIR}/out"
 grep -q "WECOM_SKIP" "${TMP_DIR}/out"
 grep -q "TELEGRAM_SKIP" "${TMP_DIR}/out"
-grep -q "QQ_SKIP" "${TMP_DIR}/out"
+grep -q "QQ_TOKEN_SKIP" "${TMP_DIR}/out"
+grep -q "QQ_DELIVERY_SKIP" "${TMP_DIR}/out"
+
+OPENHOOK_API_BASE="http://127.0.0.1:${PORT}" \
+OPENHOOK_REQUIRE_GITHUB=1 \
+QQ_APP_ID="test-app" \
+QQ_APP_SECRET="test-secret" \
+QQ_OPENID="test-openid" \
+QQ_TOKEN_URL="http://127.0.0.1:${PORT}/app/getAppAccessToken" \
+QQ_API_BASE="http://127.0.0.1:${PORT}" \
+"${ROOT_DIR}/scripts/production-smoke.sh" >"${TMP_DIR}/out-qq"
+
+grep -q "QQ_TOKEN_OK expiresIn=7200" "${TMP_DIR}/out-qq"
+grep -q "QQ_C2C_OK statusCode=200 messageId=msg-456" "${TMP_DIR}/out-qq"
+grep -q "QQ_DELIVERY_SKIP" "${TMP_DIR}/out-qq"
+if grep -q "mock-production-token" "${TMP_DIR}/out-qq"; then
+  echo "production smoke leaked QQ access token" >&2
+  exit 1
+fi
 
 echo "PRODUCTION_SMOKE_TEST_OK"

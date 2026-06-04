@@ -124,6 +124,9 @@ OPENHOOK_PUBLIC_URL=https://commute-planner.site \
 OPENHOOK_REQUIRE_GITHUB=1 \
 OPENHOOK_RUN_PRODUCTION_SMOKE=1 \
 OPENHOOK_WECOM_ROUTE_ID=rt_xxx \
+QQ_APP_ID=qq-bot-app-id \
+QQ_APP_SECRET=qq-bot-app-secret \
+QQ_OPENID=qq-c2c-recipient-openid \
 scripts/deploy-openhook.sh
 ```
 
@@ -156,10 +159,13 @@ Production smoke after deploy:
 ```bash
 OPENHOOK_REQUIRE_GITHUB=1 \
 OPENHOOK_WECOM_ROUTE_ID=rt_xxx \
+QQ_APP_ID=qq-bot-app-id \
+QQ_APP_SECRET=qq-bot-app-secret \
+QQ_OPENID=qq-c2c-recipient-openid \
 scripts/production-smoke.sh
 ```
 
-The smoke script checks `/health`, `/api/auth/me`, WeCom when `OPENHOOK_WECOM_ROUTE_ID` or `WECOM_WEBHOOK_URL` is present, Telegram when `OPENHOOK_TELEGRAM_ROUTE_ID` or `TELEGRAM_WEBHOOK_URL` plus `TELEGRAM_CHAT_ID` are present, and QQ when `OPENHOOK_QQ_ROUTE_ID` or `QQ_WEBHOOK_URL` is present. Missing provider credentials are reported as skips so the same command can be used before QQ and Telegram are ready.
+The smoke script checks `/health`, `/api/auth/me`, WeCom when `OPENHOOK_WECOM_ROUTE_ID` or `WECOM_WEBHOOK_URL` is present, Telegram when `OPENHOOK_TELEGRAM_ROUTE_ID` or `TELEGRAM_WEBHOOK_URL` plus `TELEGRAM_CHAT_ID` are present, QQ official bot token access when `QQ_APP_ID` and `QQ_APP_SECRET` are present, QQ official C2C delivery when `QQ_OPENID` is also present, and QQ route delivery when `OPENHOOK_QQ_ROUTE_ID` or `QQ_WEBHOOK_URL` is present. Missing provider credentials are reported as skips so the same command can be used while QQ and Telegram delivery targets are still being prepared.
 
 Production environment file example:
 
@@ -277,6 +283,27 @@ curl -s http://localhost:8080/api/templates \
 ```
 
 QQ official bot integrations differ by bridge or SDK. Keep route `mode: raw`, set the target URL to the QQ bridge webhook, then adjust the JSON body to that bridge's required shape.
+
+QQ official bot token smoke:
+
+```bash
+QQ_APP_ID='qq-bot-app-id' \
+QQ_APP_SECRET='qq-bot-app-secret' \
+scripts/qq-token-smoke.sh
+```
+
+`scripts/qq-token-smoke.sh` calls `https://bots.qq.com/app/getAppAccessToken` with `appId` and `clientSecret`, then prints `QQ_TOKEN_OK expiresIn=...` without printing the access token. Official C2C delivery still requires a recipient openid from QQ bot events or a QQ bridge/SDK endpoint that accepts OpenHook's rendered JSON.
+
+QQ official C2C smoke:
+
+```bash
+QQ_APP_ID='qq-bot-app-id' \
+QQ_APP_SECRET='qq-bot-app-secret' \
+QQ_OPENID='qq-c2c-recipient-openid' \
+scripts/qq-c2c-smoke.sh
+```
+
+`scripts/qq-c2c-smoke.sh` sends a text payload to `https://api.sgroup.qq.com/v2/users/{openid}/messages` with `Authorization: QQBot ...` and `X-Union-Appid`. Use `QQ_SANDBOX=1` for sandbox API or `QQ_API_BASE` to override the API host.
 
 Provider smoke helper:
 

@@ -23,6 +23,16 @@ Provider target env for creating temporary routes:
   TELEGRAM_CHAT_ID
   QQ_WEBHOOK_URL
 
+QQ official bot token smoke:
+  QQ_APP_ID
+  QQ_APP_SECRET
+  QQ_OPENID                         optional, enables official C2C message smoke
+  QQ_MESSAGE                        optional C2C message text
+  QQ_MSG_SEQ                        optional C2C message sequence
+  QQ_TOKEN_URL                      default: https://bots.qq.com/app/getAppAccessToken
+  QQ_API_BASE                       default: https://api.sgroup.qq.com
+  QQ_SANDBOX=1                      use sandbox API when QQ_API_BASE is unset
+
 Optional:
   OPENHOOK_ADMIN_TOKEN              used by provider-smoke when creating routes
 EOF
@@ -92,11 +102,32 @@ else
   log "TELEGRAM_SKIP missing OPENHOOK_TELEGRAM_ROUTE_ID or TELEGRAM_WEBHOOK_URL"
 fi
 
+if [[ -n "${QQ_APP_ID:-}" || -n "${QQ_APP_SECRET:-}" ]]; then
+  if [[ -z "${QQ_APP_ID:-}" || -z "${QQ_APP_SECRET:-}" ]]; then
+    echo "QQ_APP_ID and QQ_APP_SECRET must be provided together" >&2
+    exit 1
+  fi
+  qq_token_output="$("${ROOT_DIR}/scripts/qq-token-smoke.sh")"
+  while IFS= read -r line; do
+    log "${line}"
+  done <<<"${qq_token_output}"
+  if [[ -n "${QQ_OPENID:-}" ]]; then
+    qq_c2c_output="$("${ROOT_DIR}/scripts/qq-c2c-smoke.sh")"
+    while IFS= read -r line; do
+      log "${line}"
+    done <<<"${qq_c2c_output}"
+  else
+    log "QQ_C2C_SKIP missing QQ_OPENID"
+  fi
+else
+  log "QQ_TOKEN_SKIP missing QQ_APP_ID or QQ_APP_SECRET"
+fi
+
 if [[ -n "${OPENHOOK_QQ_ROUTE_ID:-}" || -n "${QQ_WEBHOOK_URL:-}" ]]; then
   run_provider "qq" "${OPENHOOK_QQ_ROUTE_ID:-}"
-  log "QQ_OK"
+  log "QQ_DELIVERY_OK"
 else
-  log "QQ_SKIP missing OPENHOOK_QQ_ROUTE_ID or QQ_WEBHOOK_URL"
+  log "QQ_DELIVERY_SKIP missing OPENHOOK_QQ_ROUTE_ID or QQ_WEBHOOK_URL"
 fi
 
 log "PRODUCTION_SMOKE_OK"
