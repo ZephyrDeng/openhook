@@ -55,6 +55,7 @@ func Migrate(db *sql.DB) error {
 			create_by TEXT NOT NULL DEFAULT '',
 			update_by TEXT NOT NULL DEFAULT '',
 			current_owner TEXT NOT NULL DEFAULT '',
+			visibility TEXT NOT NULL DEFAULT 'private',
 			create_at INTEGER NOT NULL,
 			update_at INTEGER NOT NULL
 		);`,
@@ -153,7 +154,13 @@ func Migrate(db *sql.DB) error {
 	if err := addColumnIfMissing(db, "routes", "owner_user_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
+	if err := addColumnIfMissing(db, "templates", "visibility", "TEXT NOT NULL DEFAULT 'private'"); err != nil {
+		return err
+	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_templates_owner ON templates(current_owner);`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_templates_visibility ON templates(visibility);`); err != nil {
 		return err
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_routes_owner ON routes(owner_user_id);`); err != nil {
@@ -247,10 +254,11 @@ func (s *Store) CreateTemplate(input model.TemplateInput) (model.Template, error
 	if owner == "" {
 		owner = input.CreateBy
 	}
+	visibility := normalizeTemplateVisibility(input.Visibility)
 	_, err := s.db.Exec(
-		`INSERT INTO templates(template_id, template_key, template_name, content, msg_type, script, async_script, simulation, create_by, update_by, current_owner, create_at, update_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, key, input.TemplateName, input.Content, input.MsgType, input.Script, input.AsyncScript, rawOrDefault(input.Simulation, "{}"), input.CreateBy, input.CreateBy, owner, ts, ts,
+		`INSERT INTO templates(template_id, template_key, template_name, content, msg_type, script, async_script, simulation, create_by, update_by, current_owner, visibility, create_at, update_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, key, input.TemplateName, input.Content, input.MsgType, input.Script, input.AsyncScript, rawOrDefault(input.Simulation, "{}"), input.CreateBy, input.CreateBy, owner, visibility, ts, ts,
 	)
 	if err != nil {
 		return model.Template{}, err
@@ -275,7 +283,7 @@ func (s *Store) ListTemplatesForOwner(search, owner string, limit, offset int, s
 	whereParts := []string{}
 	args := []any{}
 	if owner != "" {
-		whereParts = append(whereParts, "current_owner = ?")
+		whereParts = append(whereParts, "(current_owner = ? OR visibility = 'public')")
 		args = append(args, owner)
 	}
 	if search != "" {
@@ -291,7 +299,7 @@ func (s *Store) ListTemplatesForOwner(search, owner string, limit, offset int, s
 	if err := s.db.QueryRow(`SELECT COUNT(1) FROM templates `+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	query := fmt.Sprintf(`SELECT id, template_id, template_key, template_name, content, msg_type, script, async_script, simulation, create_by, update_by, current_owner, create_at, update_at FROM templates %s ORDER BY %s %s LIMIT ? OFFSET ?`, where, sortBy, sortOrder)
+	query := fmt.Sprintf(`SELECT id, template_id, template_key, template_name, content, msg_type, script, async_script, simulation, create_by, update_by, current_owner, visibility, create_at, update_at FROM templates %s ORDER BY %s %s LIMIT ? OFFSET ?`, where, sortBy, sortOrder)
 	args = append(args, limit, offset)
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
@@ -310,7 +318,7 @@ func (s *Store) ListTemplatesForOwner(search, owner string, limit, offset int, s
 }
 
 func (s *Store) GetTemplate(templateID string) (model.Template, error) {
-	row := s.db.QueryRow(`SELECT id, template_id, template_key, template_name, content, msg_type, script, async_script, simulation, create_by, update_by, current_owner, create_at, update_at FROM templates WHERE template_id = ?`, templateID)
+	row := s.db.QueryRow(`SELECT id, template_id, template_key, template_name, content, msg_type, script, async_script, simulation, create_by, update_by, current_owner, visibility, create_at, update_at FROM templates WHERE template_id = ?`, templateID)
 	item, err := scanTemplate(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Template{}, ErrNotFound
@@ -335,9 +343,12 @@ func (s *Store) UpdateTemplate(templateID string, input model.TemplateInput, upd
 	if len(input.Simulation) == 0 {
 		input.Simulation = current.Simulation
 	}
+	if input.Visibility == "" {
+		input.Visibility = current.Visibility
+	}
 	_, err = s.db.Exec(
-		`UPDATE templates SET template_name = ?, content = ?, msg_type = ?, script = ?, async_script = ?, simulation = ?, update_by = ?, update_at = ? WHERE template_id = ?`,
-		input.TemplateName, input.Content, input.MsgType, input.Script, input.AsyncScript, rawOrDefault(input.Simulation, "{}"), updateBy, nowMS(), templateID,
+		`UPDATE templates SET template_name = ?, content = ?, msg_type = ?, script = ?, async_script = ?, simulation = ?, visibility = ?, update_by = ?, update_at = ? WHERE template_id = ?`,
+		input.TemplateName, input.Content, input.MsgType, input.Script, input.AsyncScript, rawOrDefault(input.Simulation, "{}"), normalizeTemplateVisibility(input.Visibility), updateBy, nowMS(), templateID,
 	)
 	if err != nil {
 		return model.Template{}, err
@@ -364,7 +375,14 @@ type scanner interface {
 func scanTemplate(row scanner) (model.Template, error) {
 	var item model.Template
 	var simulation string
-	err := row.Scan(&item.ID, &item.TemplateID, &item.TemplateKey, &item.TemplateName, &item.Content, &item.MsgType, &item.Script, &item.AsyncScript, &simulation, &item.CreateBy, &item.UpdateBy, &item.CurrentOwner, &item.CreateAt, &item.UpdateAt)
+	err := row.Scan(&item.ID, &item.TemplateID, &item.TemplateKey, &item.TemplateName, &item.Content, &item.MsgType, &item.Script, &item.AsyncScript, &simulation, &item.CreateBy, &item.UpdateBy, &item.CurrentOwner, &item.Visibility, &item.CreateAt, &item.UpdateAt)
 	item.Simulation = json.RawMessage(simulation)
 	return item, err
+}
+
+func normalizeTemplateVisibility(value string) string {
+	if strings.EqualFold(value, "public") {
+		return "public"
+	}
+	return "private"
 }

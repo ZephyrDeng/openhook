@@ -10,8 +10,6 @@
   import Tokens from './pages/Tokens.svelte'
   import Deliveries from './pages/Deliveries.svelte'
   import Settings from './pages/Settings.svelte'
-  import Filters from './pages/Filters.svelte'
-  import DedupRules from './pages/DedupRules.svelte'
   import { auth } from './stores/api.js'
   import { toast } from './stores/toast.js'
   import { Github, KeyRound, LogIn } from 'lucide-svelte'
@@ -205,7 +203,7 @@
       {:else if currentPage === 'routes'}
         <Routes onEdit={handleEditRoute} onNew={handleNewRoute} />
       {:else if currentPage === 'route-editor'}
-        <RouteEditor route={editingRoute} onBack={handleBackToRoutes} />
+        <RouteEditor route={editingRoute} onBack={handleBackToRoutes} allowMiddlewares={authState.admin || authState.authRequired === false} />
       {:else if currentPage === 'middlewares'}
         <Middlewares />
       {:else if currentPage === 'tokens'}
@@ -214,10 +212,6 @@
         <Deliveries />
       {:else if currentPage === 'settings'}
         <Settings />
-      {:else if currentPage === 'filters'}
-        <Filters />
-      {:else if currentPage === 'dedup'}
-        <DedupRules />
       {/if}
     </main>
   </div>

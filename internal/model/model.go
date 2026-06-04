@@ -34,6 +34,7 @@ type Template struct {
 	CreateBy     string          `json:"createBy,omitempty"`
 	UpdateBy     string          `json:"updateBy,omitempty"`
 	CurrentOwner string          `json:"currentOwner,omitempty"`
+	Visibility   string          `json:"visibility"`
 	CreateAt     int64           `json:"createAt"`
 	UpdateAt     int64           `json:"updateAt"`
 	CanEdit      bool            `json:"canEdit,omitempty"`
@@ -49,6 +50,7 @@ type TemplateInput struct {
 	Simulation   json.RawMessage `json:"simulation"`
 	CreateBy     string          `json:"createBy"`
 	CurrentOwner string          `json:"currentOwner"`
+	Visibility   string          `json:"visibility"`
 }
 
 type TokenStatus int

@@ -100,13 +100,14 @@
             <tr>
               <th class="table-header">模板名称</th>
               <th class="table-header">类型</th>
+              <th class="table-header">可见性</th>
               <th class="table-header">内容预览</th>
               <th class="table-header w-24">操作</th>
             </tr>
           </thead>
           <tbody>
             {#each items as item (item.templateId)}
-              <tr class="table-row cursor-pointer" onclick={() => onEdit(item)}>
+              <tr class="table-row {item.canEdit ? 'cursor-pointer' : ''}" onclick={() => item.canEdit && onEdit(item)}>
                 <td class="table-cell">
                   <div class="font-medium text-[var(--color-text-primary)]">{item.templateName}</div>
                   <div class="text-xs text-[var(--color-text-tertiary)] mt-0.5 font-mono">{item.templateId}</div>
@@ -115,24 +116,35 @@
                   <span class="badge badge-success">{item.msgType}</span>
                 </td>
                 <td class="table-cell">
+                  {#if item.visibility === 'public'}
+                    <span class="badge badge-warning">public</span>
+                  {:else}
+                    <span class="badge badge-success">private</span>
+                  {/if}
+                </td>
+                <td class="table-cell">
                   <div class="max-w-xs truncate text-[var(--color-text-secondary)]">{item.content}</div>
                 </td>
                 <td class="table-cell">
                   <div class="flex items-center gap-1">
-                    <button
-                      class="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] transition-colors"
-                      onclick={(e) => { e.stopPropagation(); onEdit(item) }}
-                      title="编辑"
-                    >
-                      <Pencil size={14} />
-                    </button>
-                    <button
-                      class="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-error)] transition-colors"
-                      onclick={(e) => { e.stopPropagation(); confirmDelete(item) }}
-                      title="删除"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    {#if item.canEdit}
+                      <button
+                        class="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] transition-colors"
+                        onclick={(e) => { e.stopPropagation(); onEdit(item) }}
+                        title="编辑"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    {/if}
+                    {#if item.canDel}
+                      <button
+                        class="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-error)] transition-colors"
+                        onclick={(e) => { e.stopPropagation(); confirmDelete(item) }}
+                        title="删除"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    {/if}
                   </div>
                 </td>
               </tr>

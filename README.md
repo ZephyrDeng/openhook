@@ -1,6 +1,6 @@
 # OpenHook
 
-OpenHook is a Go webhook forwarding service with a built-in web management console. It supports message templates, route-based forwarding, token-scoped template updates, filters, dedup rules, delivery logs, and custom JavaScript middleware.
+OpenHook is a Go webhook forwarding service with a built-in web management console. It supports user-owned message templates, public template reuse, route-based forwarding, token-scoped template updates, delivery logs, and custom JavaScript middleware.
 
 The backend uses SQLite by default and depends only on open-source Go modules. The frontend is a Svelte 5 SPA embedded directly into the Go binary for single-binary deployment.
 
@@ -8,13 +8,13 @@ The backend uses SQLite by default and depends only on open-source Go modules. T
 
 - **Web Management Console** — Svelte 5 + Tailwind CSS, embedded into the Go binary.
 - SQLite persistence with automatic migrations.
-- Template CRUD with `{{data.xxx}}` and `{{global.xxx}}` placeholders.
+- User-owned template CRUD with `{{data.xxx}}` and `{{global.xxx}}` placeholders.
+- Public templates that other logged-in users can reuse in routes while editing stays with the owner.
 - **Real-time template preview** — Edit and preview message rendering side-by-side.
 - Route configuration for reusable webhook forwarding.
 - Generic HTTP webhook forwarding with `envelope` and `raw` modes.
 - Token management for external template updates.
 - Custom JavaScript middleware powered by `goja`.
-- Filter and dedup-rule CRUD storage.
 - GitLab and Sentry compatible webhook entrypoints.
 - Delivery logs for debugging outbound requests.
 - Docker and docker-compose support.
@@ -76,7 +76,7 @@ https://your-domain.example/login/github
 https://your-domain.example/register/github
 ```
 
-Logged-in users get isolated templates and routes. Admin-token requests can manage all templates, routes, tokens, middlewares, filters, dedup rules, and delivery logs.
+Logged-in users get isolated templates and routes. A template can be published as `public` so other users can reuse it in their own routes. Admin-token requests can manage all templates, routes, tokens, middlewares, hidden rule-storage APIs, and delivery logs.
 
 ## Docker
 
@@ -428,20 +428,19 @@ Middleware:
 - `PUT /api/middlewares/{middlewareId}`
 - `DELETE /api/middlewares/{middlewareId}`
 
-Filters:
+Hidden rule-storage APIs:
 
 - `GET /api/filters`
 - `POST /api/filters`
 - `PUT /api/filters/{id}`
 - `DELETE /api/filters/{id}`
-
-Dedup rules:
-
 - `GET /api/dedup-rule`
 - `GET /api/dedup-rule/one`
 - `POST /api/dedup-rule`
 - `PUT /api/dedup-rule/{id}`
 - `DELETE /api/dedup-rule/{id}`
+
+These rule-storage APIs are kept for future delivery filtering/dedup use cases and are hidden from the web console until they are wired into the forwarding path.
 
 Webhook compatibility:
 

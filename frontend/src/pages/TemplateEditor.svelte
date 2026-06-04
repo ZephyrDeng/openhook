@@ -11,6 +11,7 @@
     return {
       templateName: t?.templateName || '',
       msgType: t?.msgType || 'markdown',
+      visibility: t?.visibility || 'private',
       content: t?.content || '# {{data.title}}\n- severity: {{data.severity}}\n- service: {{data.service}}',
       simulation: t?.simulation ? JSON.stringify(t.simulation, null, 2) : '{\n  "title": "Test Alert",\n  "severity": "critical",\n  "service": "checkout"\n}',
     }
@@ -54,6 +55,7 @@
       const body = {
         templateName: form.templateName,
         msgType: form.msgType,
+        visibility: form.visibility,
         content: form.content,
         simulation: JSON.parse(form.simulation || '{}'),
       }
@@ -77,6 +79,7 @@
     const next = buildForm(template)
     form.templateName = next.templateName
     form.msgType = next.msgType
+    form.visibility = next.visibility
     form.content = next.content
     form.simulation = next.simulation
   })
@@ -125,6 +128,14 @@
             <option value="markdown">markdown</option>
             <option value="text">text</option>
             <option value="html">html</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="template-visibility" class="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">可见性</label>
+          <select id="template-visibility" class="input" bind:value={form.visibility}>
+            <option value="private">private</option>
+            <option value="public">public</option>
           </select>
         </div>
 
