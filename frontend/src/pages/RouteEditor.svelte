@@ -2,7 +2,7 @@
   import { routes, templates, middlewares as mwApi } from '../stores/api.js'
   import { toast } from '../stores/toast.js'
   import FormField from '../components/FormField.svelte'
-  import { ArrowLeft, Save, Plus, Trash2, Send, X } from 'lucide-svelte'
+  import { ArrowLeft, Save, Plus, Trash2, Send, X, MessagesSquare } from 'lucide-svelte'
   import Modal from '../components/Modal.svelte'
 
   let { route = null, onBack, allowMiddlewares = false } = $props()
@@ -32,6 +32,103 @@
   let testData = $state('{\n  "title": "Test Alert",\n  "severity": "info",\n  "service": "test"\n}')
   let testResult = $state(null)
   let testLoading = $state(false)
+  let testDataTouched = $state(false)
+
+  const defaultTestData = {
+    title: 'Test Alert',
+    severity: 'info',
+    service: 'test',
+  }
+
+  const providerProfiles = [
+    {
+      id: 'wecom-markdown',
+      provider: 'wecom',
+      label: '企微 Markdown',
+      targetUrlHint: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...',
+      mode: 'raw',
+      fields: ['title', 'severity', 'service', 'environment', 'time', 'description'],
+      sample: {
+        title: 'OpenHook 告警',
+        severity: 'info',
+        service: 'openhook',
+        environment: 'prod',
+        time: '2026-06-04 00:00:00',
+        description: 'provider smoke',
+      },
+      match: (tpl) => includesAll(tpl?.content, ['"msgtype":"markdown"', '"markdown"', '{{json data.text}}']),
+    },
+    {
+      id: 'wecom-text',
+      provider: 'wecom',
+      label: '企微 Text',
+      targetUrlHint: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...',
+      mode: 'raw',
+      fields: ['title', 'severity', 'service', 'environment', 'description', 'mentionedList', 'mentionedMobileList'],
+      sample: {
+        title: 'OpenHook 告警',
+        severity: 'info',
+        service: 'openhook',
+        environment: 'prod',
+        description: 'provider smoke',
+        mentionedList: [],
+        mentionedMobileList: [],
+      },
+      match: (tpl) => includesAll(tpl?.content, ['"msgtype":"text"', 'mentioned_list', 'mentioned_mobile_list']),
+    },
+    {
+      id: 'telegram-html',
+      provider: 'telegram',
+      label: 'Telegram HTML',
+      targetUrlHint: 'https://api.telegram.org/bot<TOKEN>/sendMessage',
+      mode: 'raw',
+      fields: ['chatId', 'title', 'severity', 'service', 'environment', 'description'],
+      sample: {
+        chatId: '123456789',
+        title: 'OpenHook alert',
+        severity: 'info',
+        service: 'openhook',
+        environment: 'prod',
+        description: 'provider smoke',
+      },
+      match: (tpl) => includesAll(tpl?.content, ['"chat_id"', '"parse_mode":"HTML"', '"text"']),
+    },
+    {
+      id: 'telegram-text',
+      provider: 'telegram',
+      label: 'Telegram Text',
+      targetUrlHint: 'https://api.telegram.org/bot<TOKEN>/sendMessage',
+      mode: 'raw',
+      fields: ['chatId', 'text', 'title', 'severity', 'service', 'environment', 'description'],
+      sample: {
+        chatId: '123456789',
+        title: 'OpenHook alert',
+        severity: 'info',
+        service: 'openhook',
+        environment: 'prod',
+        description: 'provider smoke',
+      },
+      match: (tpl) => includesAll(tpl?.content, ['"chat_id"', '"text"']) && !String(tpl?.content || '').includes('"parse_mode":"HTML"'),
+    },
+  ]
+
+  function includesAll(value, needles) {
+    const text = String(value || '')
+    return needles.every((needle) => text.includes(needle))
+  }
+
+  function selectedTemplate() {
+    return tplList.find((tpl) => tpl.templateId === form.templateId) || null
+  }
+
+  function selectedProviderProfile() {
+    const tpl = selectedTemplate()
+    if (!tpl) return null
+    return providerProfiles.find((profile) => profile.match(tpl)) || null
+  }
+
+  const activeProvider = $derived(selectedProviderProfile())
+  const targetUrlPlaceholder = $derived(activeProvider?.targetUrlHint || 'https://example.com/webhook')
 
   const errors = $derived({
     name: touched.name && !form.name.trim() ? '请输入路由名称' : '',
@@ -77,6 +174,33 @@
     } else {
       form.middlewareIds = [...form.middlewareIds, id]
     }
+  }
+
+  function formatJSON(value) {
+    return JSON.stringify(value, null, 2)
+  }
+
+  function syncProviderTestData(force = false) {
+    if (!activeProvider) return
+    if (!force && testDataTouched) return
+    testData = formatJSON(activeProvider.sample)
+    testDataTouched = false
+  }
+
+  function handleTemplateChange() {
+    touched.templateId = true
+    const profile = selectedProviderProfile()
+    if (profile) {
+      form.mode = profile.mode
+      syncProviderTestData(true)
+    }
+  }
+
+  function applyProviderDefaults() {
+    if (!activeProvider) return
+    form.mode = activeProvider.mode
+    syncProviderTestData(true)
+    toast.success(`已套用 ${activeProvider.label} 路由建议`)
   }
 
   async function save() {
@@ -129,6 +253,31 @@
     }
   }
 
+  function openTestModal() {
+    syncProviderTestData(!testDataTouched)
+    testResult = null
+    showTestModal = true
+  }
+
+  function responseSummary(result) {
+    if (!activeProvider || !result?.response || typeof result.response !== 'object') {
+      return ''
+    }
+    const resp = result.response
+    if (activeProvider.provider === 'wecom' && resp.errcode !== undefined) {
+      return `企微 errcode=${resp.errcode}${resp.errmsg ? ` · ${resp.errmsg}` : ''}`
+    }
+    if (activeProvider.provider === 'telegram' && resp.ok !== undefined) {
+      return `Telegram ok=${resp.ok}${resp.description ? ` · ${resp.description}` : ''}`
+    }
+    return ''
+  }
+
+  function resultStatusLabel(result) {
+    const summary = responseSummary(result)
+    return summary || result.message
+  }
+
   $effect(() => {
     loadRefs()
   })
@@ -143,6 +292,8 @@
     form.mode = next.mode
     form.enabled = next.enabled
     touched = {}
+    testData = formatJSON(defaultTestData)
+    testDataTouched = false
   })
 
   const modeOptions = [
@@ -168,7 +319,7 @@
     </div>
     <div class="desktop-actions">
       {#if isEdit}
-        <button class="btn btn-secondary" onclick={() => showTestModal = true}>
+        <button class="btn btn-secondary" onclick={openTestModal}>
           <Send size={16} />
           测试投递
         </button>
@@ -195,13 +346,36 @@
       </FormField>
 
       <FormField label="消息模板" forId="route-template" required error={errors.templateId} helper="选择要使用的消息模板">
-        <select id="route-template" class="input" bind:value={form.templateId} onchange={() => touched.templateId = true}>
+        <select id="route-template" class="input" bind:value={form.templateId} onchange={handleTemplateChange}>
           <option value="">选择模板...</option>
           {#each tplList as tpl}
             <option value={tpl.templateId}>{tpl.templateName} · {tpl.visibility === 'public' ? '公开' : '私有'} ({tpl.templateId})</option>
           {/each}
         </select>
       </FormField>
+
+      {#if activeProvider}
+        <div class="route-provider-panel">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <div class="flex items-center gap-2">
+                <MessagesSquare size={16} class="text-[var(--color-accent)]" />
+                <span class="text-sm font-semibold text-[var(--color-text-primary)]">{activeProvider.label}</span>
+                <span class="badge badge-success">{activeProvider.mode}</span>
+              </div>
+              <div class="route-provider-hint">{activeProvider.targetUrlHint}</div>
+            </div>
+            <button type="button" class="btn btn-secondary compact" onclick={applyProviderDefaults}>
+              套用建议
+            </button>
+          </div>
+          <div class="route-provider-fields">
+            {#each activeProvider.fields as field}
+              <span>{field}</span>
+            {/each}
+          </div>
+        </div>
+      {/if}
 
       <!-- Target URLs -->
       <div class="form-section">
@@ -219,7 +393,7 @@
                 class="input flex-1"
                 bind:value={form.targetUrls[idx]}
                 aria-label={`目标 Webhook 地址 ${idx + 1}`}
-                placeholder="https://example.com/webhook"
+                placeholder={targetUrlPlaceholder}
               />
               {#if form.targetUrls.length > 1}
                 <button
@@ -312,7 +486,7 @@
 
   <div class="mobile-sticky-actions {isEdit ? 'three-actions' : ''}">
     {#if isEdit}
-      <button class="btn btn-secondary" onclick={() => showTestModal = true}>
+      <button class="btn btn-secondary" onclick={openTestModal}>
         <Send size={16} />
         测试
       </button>
@@ -328,8 +502,26 @@
 <!-- Test Modal -->
 <Modal show={showTestModal} title="测试投递" onclose={() => showTestModal = false}>
   <div class="space-y-4">
+    {#if activeProvider}
+      <div class="route-provider-panel compact-panel">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <div class="text-sm font-semibold text-[var(--color-text-primary)]">{activeProvider.label}</div>
+            <div class="route-provider-hint">{activeProvider.targetUrlHint}</div>
+          </div>
+          <span class="badge badge-success">{activeProvider.mode}</span>
+        </div>
+      </div>
+    {/if}
+
     <FormField label="测试数据 (JSON)" forId="route-test-data">
-      <textarea id="route-test-data" class="input font-mono text-xs" style="min-height: 120px;" bind:value={testData}></textarea>
+      <textarea
+        id="route-test-data"
+        class="input font-mono text-xs"
+        style="min-height: 120px;"
+        bind:value={testData}
+        oninput={() => testDataTouched = true}
+      ></textarea>
     </FormField>
 
     {#if testResult}
@@ -347,7 +539,7 @@
                   <span class="badge badge-error">失败</span>
                 {/if}
                 <span class="text-[var(--color-text-secondary)] break-all">{result.targetUrl}</span>
-                <span class="text-[var(--color-text-tertiary)]">{result.message}</span>
+                <span class="text-[var(--color-text-tertiary)]">{resultStatusLabel(result)}</span>
               </div>
             {/each}
           </div>

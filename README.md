@@ -11,6 +11,7 @@ The backend uses SQLite by default and depends only on open-source Go modules. T
 - User-owned template CRUD with `{{data.xxx}}` and `{{global.xxx}}` placeholders.
 - Public templates that other logged-in users can reuse in routes while editing stays with the owner.
 - **Real-time template preview** — Edit and preview message rendering side-by-side.
+- Built-in provider presets for WeCom group robots and Telegram Bot API `sendMessage`.
 - Route configuration for reusable webhook forwarding.
 - Generic HTTP webhook forwarding with `envelope` and `raw` modes.
 - Token management for external template updates.
@@ -237,7 +238,9 @@ Built-in examples:
 
 ```text
 examples/providers/wecom-markdown-template.json
+examples/providers/wecom-text-template.json
 examples/providers/telegram-send-message-template.json
+examples/providers/telegram-text-template.json
 examples/providers/qq-webhook-text-template.json
 examples/providers/raw-route.json
 ```
@@ -250,11 +253,24 @@ curl -s http://localhost:8080/api/templates \
   -d @examples/providers/wecom-markdown-template.json
 ```
 
+Text mode with member mentions is also available:
+
+```bash
+curl -s http://localhost:8080/api/templates \
+  -H 'Content-Type: application/json' \
+  -d @examples/providers/wecom-text-template.json
+```
+
 Use route `mode: raw` and target URL:
 
 ```text
 https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...
 ```
+
+The built-in WeCom formats cover:
+
+- `wecom-markdown`: `{ "msgtype": "markdown", "markdown": { "content": "..." } }`
+- `wecom-text`: `{ "msgtype": "text", "text": { "content": "...", "mentioned_list": [], "mentioned_mobile_list": [] } }`
 
 Telegram Bot API:
 
@@ -264,13 +280,36 @@ curl -s http://localhost:8080/api/templates \
   -d @examples/providers/telegram-send-message-template.json
 ```
 
+Plain text mode is also available:
+
+```bash
+curl -s http://localhost:8080/api/templates \
+  -H 'Content-Type: application/json' \
+  -d @examples/providers/telegram-text-template.json
+```
+
 Use route `mode: raw` and target URL:
 
 ```text
 https://api.telegram.org/bot<token>/sendMessage
 ```
 
-Telegram payload requires `chatId` in the delivery data. Telegram `sendMessage` accepts `chat_id`, `text`, and optional `parse_mode`.
+The built-in Telegram formats cover:
+
+- `telegram-html`: `sendMessage` with `chat_id`, `text`, `parse_mode: "HTML"`, and disabled link preview.
+- `telegram-text`: `sendMessage` with `chat_id`, `text`, and disabled link preview.
+
+Telegram payload requires `chatId` in the delivery data. OpenHook maps it to Bot API `chat_id`.
+
+Provider presets can also be discovered and copied through the API:
+
+```bash
+curl -s http://localhost:8080/api/providers
+
+curl -s http://localhost:8080/api/providers/wecom-markdown/templates \
+  -H 'Content-Type: application/json' \
+  -d '{"templateName":"prod-wecom-alert"}'
+```
 
 QQ webhook bridge:
 
@@ -309,9 +348,16 @@ Provider smoke helper:
 WECOM_WEBHOOK_URL='https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...' \
 scripts/provider-smoke.sh wecom
 
+WECOM_WEBHOOK_URL='https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...' \
+scripts/provider-smoke.sh wecom-text
+
 TELEGRAM_WEBHOOK_URL='https://api.telegram.org/bot<TOKEN>/sendMessage' \
 TELEGRAM_CHAT_ID='123456789' \
 scripts/provider-smoke.sh telegram
+
+TELEGRAM_WEBHOOK_URL='https://api.telegram.org/bot<TOKEN>/sendMessage' \
+TELEGRAM_CHAT_ID='123456789' \
+scripts/provider-smoke.sh telegram-text
 
 QQ_WEBHOOK_URL='https://example.com/qq-webhook' \
 scripts/provider-smoke.sh qq
@@ -402,6 +448,12 @@ Templates:
 - `POST /api/templates/{templateId}/render`
 - `POST /api/templates/preview`
 - `PUT /api/templates/{templateId}/token/{token}`
+
+Provider presets:
+
+- `GET /api/providers`
+- `GET /api/providers/{presetId}`
+- `POST /api/providers/{presetId}/templates`
 
 Tokens:
 

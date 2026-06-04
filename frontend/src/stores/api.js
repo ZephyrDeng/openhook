@@ -46,6 +46,12 @@ export const templates = {
   preview: (body) => api('/api/templates/preview', { method: 'POST', body: JSON.stringify(body) }),
 }
 
+export const providers = {
+  list: () => api('/api/providers'),
+  get: (id) => api(`/api/providers/${id}`),
+  createTemplate: (id, body = {}) => api(`/api/providers/${id}/templates`, { method: 'POST', body: JSON.stringify(body) }),
+}
+
 export const routes = {
   list: () => api('/api/routes'),
   get: (id) => api(`/api/routes/${id}`),

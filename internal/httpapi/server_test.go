@@ -590,6 +590,52 @@ func TestStarterTemplatesRenderRawJSONObjectsWithUnsafeText(t *testing.T) {
 	}
 }
 
+func TestProviderPresetAPIsCreateRenderableTemplate(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+	app := NewServer(store.New(db), config.Config{}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/providers", nil)
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("providers status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	for _, want := range []string{"wecom-markdown", "wecom-text", "telegram-html", "telegram-text"} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("providers response missing %q: %s", want, rec.Body.String())
+		}
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/providers/wecom-text/templates", bytes.NewBufferString(`{"templateName":"wecom-text-copy"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create provider template status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var envelope struct {
+		Data model.Template `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.Data.TemplateName != "wecom-text-copy" {
+		t.Fatalf("unexpected template name: %#v", envelope.Data)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/templates/"+envelope.Data.TemplateID+"/render", bytes.NewBufferString(`{"title":"Provider check","mentionedList":["@all"],"mentionedMobileList":[]}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("render provider template status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"msgtype":"text"`) || !strings.Contains(rec.Body.String(), `"@all"`) {
+		t.Fatalf("rendered provider template missing wecom fields: %s", rec.Body.String())
+	}
+}
+
 func storeUserForStarterTest() model.User {
 	return model.User{
 		UserID:     "usr_test",

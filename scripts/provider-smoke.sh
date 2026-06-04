@@ -6,7 +6,7 @@ PROVIDER="${1:-}"
 
 usage() {
   cat >&2 <<'EOF'
-usage: scripts/provider-smoke.sh <wecom|telegram|qq>
+usage: scripts/provider-smoke.sh <wecom|wecom-text|telegram|telegram-text|qq>
 
 Environment:
   OPENHOOK_API_BASE                 default: https://commute-planner.site
@@ -14,14 +14,16 @@ Environment:
   OPENHOOK_ADMIN_TOKEN              optional, used when creating a route
 
 Provider target env:
-  WECOM_WEBHOOK_URL                 for provider wecom
-  TELEGRAM_WEBHOOK_URL              for provider telegram, e.g. https://api.telegram.org/bot<TOKEN>/sendMessage
-  TELEGRAM_CHAT_ID                  required for provider telegram
+  WECOM_WEBHOOK_URL                 for provider wecom or wecom-text
+  TELEGRAM_WEBHOOK_URL              for provider telegram or telegram-text, e.g. https://api.telegram.org/bot<TOKEN>/sendMessage
+  TELEGRAM_CHAT_ID                  required for provider telegram or telegram-text
   QQ_WEBHOOK_URL                    for provider qq
 
 Examples:
   WECOM_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=... scripts/provider-smoke.sh wecom
+  WECOM_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=... scripts/provider-smoke.sh wecom-text
   TELEGRAM_WEBHOOK_URL=https://api.telegram.org/bot.../sendMessage TELEGRAM_CHAT_ID=123 scripts/provider-smoke.sh telegram
+  TELEGRAM_WEBHOOK_URL=https://api.telegram.org/bot.../sendMessage TELEGRAM_CHAT_ID=123 scripts/provider-smoke.sh telegram-text
   QQ_WEBHOOK_URL=https://example.com/qq-webhook scripts/provider-smoke.sh qq
 EOF
 }
@@ -37,6 +39,11 @@ case "${PROVIDER}" in
     TARGET_URL="${WECOM_WEBHOOK_URL:-}"
     PAYLOAD='{"title":"OpenHook WeCom smoke","severity":"info","service":"openhook","environment":"prod","time":"2026-06-04 00:00:00","description":"provider smoke"}'
     ;;
+  wecom-text)
+    TEMPLATE_FILE="examples/providers/wecom-text-template.json"
+    TARGET_URL="${WECOM_WEBHOOK_URL:-}"
+    PAYLOAD='{"title":"OpenHook WeCom text smoke","severity":"info","service":"openhook","environment":"prod","description":"provider smoke","mentionedList":[],"mentionedMobileList":[]}'
+    ;;
   telegram)
     TEMPLATE_FILE="examples/providers/telegram-send-message-template.json"
     TARGET_URL="${TELEGRAM_WEBHOOK_URL:-}"
@@ -45,6 +52,15 @@ case "${PROVIDER}" in
       exit 1
     fi
     PAYLOAD="{\"chatId\":\"${TELEGRAM_CHAT_ID}\",\"title\":\"OpenHook Telegram smoke\",\"severity\":\"info\",\"service\":\"openhook\",\"environment\":\"prod\",\"description\":\"provider smoke\"}"
+    ;;
+  telegram-text)
+    TEMPLATE_FILE="examples/providers/telegram-text-template.json"
+    TARGET_URL="${TELEGRAM_WEBHOOK_URL:-}"
+    if [[ -z "${TELEGRAM_CHAT_ID:-}" ]]; then
+      echo "TELEGRAM_CHAT_ID is required" >&2
+      exit 1
+    fi
+    PAYLOAD="{\"chatId\":\"${TELEGRAM_CHAT_ID}\",\"title\":\"OpenHook Telegram text smoke\",\"severity\":\"info\",\"service\":\"openhook\",\"environment\":\"prod\",\"description\":\"provider smoke\"}"
     ;;
   qq)
     TEMPLATE_FILE="examples/providers/qq-webhook-text-template.json"

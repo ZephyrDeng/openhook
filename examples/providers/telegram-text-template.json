@@ -1,0 +1,14 @@
+{
+  "templateName": "Telegram-sendMessage Text",
+  "msgType": "text",
+  "content": "{\"chat_id\":{{json data.chatId}},\"text\":{{json data.text}},\"link_preview_options\":{\"is_disabled\":true}}",
+  "script": "ctx.text = ctx.text || ((ctx.title || \"OpenHook\") + \"\\nSeverity: \" + (ctx.severity || \"info\") + \"\\nService: \" + (ctx.service || \"-\") + \"\\nEnvironment: \" + (ctx.environment || \"-\") + \"\\n\\n\" + (ctx.description || \"\")); return true;",
+  "simulation": {
+    "chatId": "123456789",
+    "title": "OpenHook alert",
+    "severity": "info",
+    "service": "openhook",
+    "environment": "prod",
+    "description": "Telegram sendMessage text 测试"
+  }
+}
