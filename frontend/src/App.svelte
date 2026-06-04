@@ -36,6 +36,9 @@
     { id: 'settings', label: '设置', icon: SettingsIcon },
   ])
 
+  // Page transition key
+  let pageKey = $state(0)
+
   onMount(() => {
     adminToken = localStorage.getItem('openhook-token') || ''
     isLoginRoute = window.location.pathname === '/login'
@@ -103,7 +106,7 @@
   }
 
   function startGitHubLogin() {
-    window.location.href = '/login/github?returnTo=/'
+    window.location.href = '/login/github?returnTo=/' 
   }
 
   function moveTo(path) {
@@ -117,36 +120,43 @@
     currentPage = page
     editingTemplate = null
     editingRoute = null
+    pageKey++
   }
 
   function handleEditTemplate(template) {
     editingTemplate = template
     currentPage = 'template-editor'
+    pageKey++
   }
 
   function handleNewTemplate() {
     editingTemplate = null
     currentPage = 'template-editor'
+    pageKey++
   }
 
   function handleBackToTemplates() {
     editingTemplate = null
     currentPage = 'templates'
+    pageKey++
   }
 
   function handleEditRoute(route) {
     editingRoute = route
     currentPage = 'route-editor'
+    pageKey++
   }
 
   function handleNewRoute() {
     editingRoute = null
     currentPage = 'route-editor'
+    pageKey++
   }
 
   function handleBackToRoutes() {
     editingRoute = null
     currentPage = 'routes'
+    pageKey++
   }
 </script>
 
@@ -157,7 +167,7 @@
     <div class="w-8 h-8 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin"></div>
   </div>
 {:else if authState.authRequired && !authState.authenticated}
-  <div class="min-h-screen flex items-center justify-center bg-[var(--color-bg-primary)] px-4">
+  <div class="min-h-[100dvh] flex items-center justify-center bg-[var(--color-bg-primary)] px-4 page-transition">
     <div class="w-full max-w-sm card">
       <div class="flex items-center gap-3 mb-6">
         <div class="w-10 h-10 rounded-lg bg-[var(--color-accent)] flex items-center justify-center">
@@ -169,7 +179,7 @@
         </div>
       </div>
       {#if authError}
-        <div class="mb-4 text-sm text-[var(--color-error)] bg-[var(--color-error-bg)] rounded-md px-3 py-2">{authError}</div>
+        <div class="mb-4 text-sm text-[var(--color-error)] bg-[var(--color-error-bg)] rounded-md px-3 py-2 animate-[shakeIn_200ms_ease-out]">{authError}</div>
       {/if}
       {#if authState.githubEnabled}
         <button class="btn btn-primary w-full" onclick={startGitHubLogin}>
@@ -209,23 +219,27 @@
     </div>
 
     <main class="app-main">
-      {#if currentPage === 'templates'}
-        <Templates onEdit={handleEditTemplate} onNew={handleNewTemplate} />
-      {:else if currentPage === 'template-editor'}
-        <TemplateEditor template={editingTemplate} onBack={handleBackToTemplates} />
-      {:else if currentPage === 'routes'}
-        <Routes onEdit={handleEditRoute} onNew={handleNewRoute} />
-      {:else if currentPage === 'route-editor'}
-        <RouteEditor route={editingRoute} onBack={handleBackToRoutes} allowMiddlewares={authState.admin || authState.authRequired === false} />
-      {:else if currentPage === 'middlewares'}
-        <Middlewares />
-      {:else if currentPage === 'tokens'}
-        <Tokens />
-      {:else if currentPage === 'deliveries'}
-        <Deliveries />
-      {:else if currentPage === 'settings'}
-        <Settings />
-      {/if}
+      {#key pageKey}
+        <div class="page-transition h-full">
+          {#if currentPage === 'templates'}
+            <Templates onEdit={handleEditTemplate} onNew={handleNewTemplate} />
+          {:else if currentPage === 'template-editor'}
+            <TemplateEditor template={editingTemplate} onBack={handleBackToTemplates} />
+          {:else if currentPage === 'routes'}
+            <Routes onEdit={handleEditRoute} onNew={handleNewRoute} />
+          {:else if currentPage === 'route-editor'}
+            <RouteEditor route={editingRoute} onBack={handleBackToRoutes} allowMiddlewares={authState.admin || authState.authRequired === false} />
+          {:else if currentPage === 'middlewares'}
+            <Middlewares />
+          {:else if currentPage === 'tokens'}
+            <Tokens />
+          {:else if currentPage === 'deliveries'}
+            <Deliveries />
+          {:else if currentPage === 'settings'}
+            <Settings />
+          {/if}
+        </div>
+      {/key}
     </main>
 
     <nav class="mobile-bottom-nav" aria-label="主导航">

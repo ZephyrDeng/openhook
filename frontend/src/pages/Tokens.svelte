@@ -1,6 +1,7 @@
 <script>
   import { tokens } from '../stores/api.js'
   import { toast } from '../stores/toast.js'
+  import FormField from '../components/FormField.svelte'
   import Modal from '../components/Modal.svelte'
   import { Plus, KeyRound, Pencil, Trash2, Save, X, Copy } from 'lucide-svelte'
 
@@ -77,6 +78,12 @@
   }
 
   $effect(() => { load() })
+
+  const statusLabel = (s) => {
+    if (s === 1) return '启用'
+    if (s === 0) return '过期'
+    return '已删除'
+  }
 </script>
 
 <div class="page-shell">
@@ -95,28 +102,26 @@
     {#if loading}
       <div class="flex items-center justify-center h-64"><div class="w-8 h-8 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin"></div></div>
     {:else if items.length === 0 && !editingId}
-      <div class="flex flex-col items-center justify-center h-64 text-center">
-        <div class="w-12 h-12 rounded-full bg-[var(--color-bg-tertiary)] flex items-center justify-center mb-4"><KeyRound size={24} class="text-[var(--color-text-tertiary)]" /></div>
-        <p class="text-sm font-medium text-[var(--color-text-primary)]">还没有令牌</p>
-        <p class="text-sm text-[var(--color-text-secondary)] mt-1">创建令牌以允许外部系统更新模板</p>
-        <button class="btn btn-primary mt-4" onclick={startNew}><Plus size={16} />新建令牌</button>
+      <div class="empty-state">
+        <div class="empty-state-icon"><KeyRound size={24} /></div>
+        <p class="empty-state-title">还没有令牌</p>
+        <p class="empty-state-desc">创建令牌以允许外部系统更新模板</p>
+        <button class="btn btn-primary" onclick={startNew}><Plus size={16} />新建令牌</button>
       </div>
     {:else}
       <div class="space-y-4">
         {#if editingId}
-          <div class="card space-y-4">
+          <div class="card space-y-4 page-transition">
             <div class="flex items-center justify-between">
-              <h3 class="text-sm font-medium text-[var(--color-text-primary)]">{editingId === 'new' ? '新建令牌' : '编辑令牌'}</h3>
-              <button class="btn btn-ghost p-1" onclick={cancelEdit}><X size={16} /></button>
+              <h3 class="text-sm font-semibold text-[var(--color-text-primary)]">{editingId === 'new' ? '新建令牌' : '编辑令牌'}</h3>
+              <button class="btn btn-ghost p-1" onclick={cancelEdit} aria-label="取消编辑"><X size={16} /></button>
             </div>
-            <div>
-              <label for="token-name" class="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">名称</label>
+            <FormField label="名称" forId="token-name" required>
               <input id="token-name" type="text" class="input" bind:value={form.name} placeholder="例如: cicd-token" />
-            </div>
-            <div>
-              <label for="token-remark" class="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">备注</label>
-              <input id="token-remark" type="text" class="input" bind:value={form.remark} placeholder="可选备注" />
-            </div>
+            </FormField>
+            <FormField label="备注" forId="token-remark" helper="可选，用于标识令牌用途">
+              <input id="token-remark" type="text" class="input" bind:value={form.remark} placeholder="例如: CI/CD 流水线使用" />
+            </FormField>
             <div class="flex items-center gap-2">
               <input type="checkbox" id="cover-all" bind:checked={form.isCoverAll} class="w-4 h-4 accent-[var(--color-accent)]" />
               <label for="cover-all" class="text-sm text-[var(--color-text-primary)]">覆盖所有模板</label>
@@ -141,8 +146,8 @@
                 </tr>
               </thead>
               <tbody>
-                {#each items as item (item.token)}
-                  <tr class="table-row">
+                {#each items as item, i (item.token)}
+                  <tr class="table-row" style="animation-delay: {i * 30}ms">
                     <td class="table-cell">
                       <div class="font-medium text-sm">{item.name}</div>
                       <div class="text-xs text-[var(--color-text-tertiary)]">{item.remark || '-'}</div>
@@ -150,7 +155,7 @@
                     <td class="table-cell">
                       <div class="flex items-center gap-2">
                         <code class="font-mono text-xs bg-[var(--color-bg-tertiary)] px-1.5 py-0.5 rounded">{item.token.slice(0, 16)}...</code>
-                        <button class="text-[var(--color-text-tertiary)] hover:text-[var(--color-accent)]" onclick={() => copyToken(item.token)}><Copy size={14} /></button>
+                        <button class="text-[var(--color-text-tertiary)] hover:text-[var(--color-accent)] transition-colors" onclick={() => copyToken(item.token)} aria-label="复制令牌"><Copy size={14} /></button>
                       </div>
                     </td>
                     <td class="table-cell">
@@ -162,15 +167,15 @@
                     </td>
                     <td class="table-cell">
                       {#if item.status === 1}
-                        <span class="badge badge-success">启用</span>
+                        <span class="badge badge-success">{statusLabel(item.status)}</span>
                       {:else}
-                        <span class="badge badge-error">{item.status === 0 ? '过期' : '已删除'}</span>
+                        <span class="badge badge-error">{statusLabel(item.status)}</span>
                       {/if}
                     </td>
                     <td class="table-cell">
                       <div class="flex items-center gap-1">
-                        <button class="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-accent)]" onclick={() => startEdit(item)}><Pencil size={14} /></button>
-                        <button class="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-error)]" onclick={() => confirmDelete(item)}><Trash2 size={14} /></button>
+                        <button class="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] transition-colors" onclick={() => startEdit(item)} aria-label="编辑令牌"><Pencil size={14} /></button>
+                        <button class="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-error)] transition-colors" onclick={() => confirmDelete(item)} aria-label="删除令牌"><Trash2 size={14} /></button>
                       </div>
                     </td>
                   </tr>
@@ -178,7 +183,7 @@
               </tbody>
             </table>
           </div>
-          <div class="mobile-card-list">
+          <div class="mobile-card-list stagger-list">
             {#each items as item (item.token)}
               <article class="mobile-list-card">
                 <div class="flex items-start justify-between gap-3">
@@ -187,15 +192,15 @@
                     <div class="mt-1 text-xs text-[var(--color-text-tertiary)] truncate">{item.remark || '-'}</div>
                   </div>
                   {#if item.status === 1}
-                    <span class="badge badge-success">启用</span>
+                    <span class="badge badge-success">{statusLabel(item.status)}</span>
                   {:else}
-                    <span class="badge badge-error">{item.status === 0 ? '过期' : '已删除'}</span>
+                    <span class="badge badge-error">{statusLabel(item.status)}</span>
                   {/if}
                 </div>
                 <div class="mobile-list-meta">
                   <div class="flex items-center gap-2">
                     <code class="font-mono bg-[var(--color-bg-tertiary)] px-1.5 py-0.5 rounded">{item.token.slice(0, 16)}...</code>
-                    <button class="text-[var(--color-text-tertiary)] hover:text-[var(--color-accent)]" onclick={() => copyToken(item.token)} aria-label="复制令牌">
+                    <button class="text-[var(--color-text-tertiary)] hover:text-[var(--color-accent)] transition-colors" onclick={() => copyToken(item.token)} aria-label="复制令牌">
                       <Copy size={14} />
                     </button>
                   </div>

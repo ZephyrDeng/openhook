@@ -45,6 +45,12 @@
   $effect(() => {
     load()
   })
+
+  const modeLabel = (m) => {
+    if (m === 'envelope') return '包装消息'
+    if (m === 'raw') return '原始内容'
+    return m
+  }
 </script>
 
 <div class="page-shell">
@@ -65,13 +71,13 @@
         <div class="w-8 h-8 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin"></div>
       </div>
     {:else if items.length === 0}
-      <div class="flex flex-col items-center justify-center h-64 text-center">
-        <div class="w-12 h-12 rounded-full bg-[var(--color-bg-tertiary)] flex items-center justify-center mb-4">
-          <Route size={24} class="text-[var(--color-text-tertiary)]" />
+      <div class="empty-state">
+        <div class="empty-state-icon">
+          <Route size={24} />
         </div>
-        <p class="text-sm font-medium text-[var(--color-text-primary)]">还没有路由</p>
-        <p class="text-sm text-[var(--color-text-secondary)] mt-1">创建一条路由将模板绑定到目标 Webhook 地址</p>
-        <button class="btn btn-primary mt-4" onclick={onNew}>
+        <p class="empty-state-title">还没有路由</p>
+        <p class="empty-state-desc">创建一条路由将模板绑定到目标 Webhook 地址</p>
+        <button class="btn btn-primary" onclick={onNew}>
           <Plus size={16} />
           新建路由
         </button>
@@ -90,8 +96,8 @@
             </tr>
           </thead>
           <tbody>
-            {#each items as item (item.routeId)}
-              <tr class="table-row cursor-pointer" onclick={() => onEdit(item)}>
+            {#each items as item, i (item.routeId)}
+              <tr class="table-row cursor-pointer" onclick={() => onEdit(item)} style="animation-delay: {i * 30}ms">
                 <td class="table-cell">
                   <div class="font-medium text-[var(--color-text-primary)]">{item.name}</div>
                   <div class="text-xs text-[var(--color-text-tertiary)] mt-0.5 font-mono">{item.routeId}</div>
@@ -110,7 +116,7 @@
                   </div>
                 </td>
                 <td class="table-cell">
-                  <span class="badge badge-success">{item.mode}</span>
+                  <span class="badge badge-success">{modeLabel(item.mode)}</span>
                 </td>
                 <td class="table-cell">
                   {#if item.enabled}
@@ -121,10 +127,20 @@
                 </td>
                 <td class="table-cell">
                   <div class="flex items-center gap-1">
-                    <button class="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] transition-colors" onclick={(e) => { e.stopPropagation(); onEdit(item) }}>
+                    <button
+                      class="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] transition-colors"
+                      onclick={(e) => { e.stopPropagation(); onEdit(item) }}
+                      title="编辑"
+                      aria-label="编辑路由"
+                    >
                       <Pencil size={14} />
                     </button>
-                    <button class="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-error)] transition-colors" onclick={(e) => { e.stopPropagation(); confirmDelete(item) }}>
+                    <button
+                      class="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-error)] transition-colors"
+                      onclick={(e) => { e.stopPropagation(); confirmDelete(item) }}
+                      title="删除"
+                      aria-label="删除路由"
+                    >
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -134,7 +150,7 @@
           </tbody>
         </table>
       </div>
-      <div class="mobile-card-list">
+      <div class="mobile-card-list stagger-list">
         {#each items as item (item.routeId)}
           <article class="mobile-list-card">
             <div class="flex items-start justify-between gap-3">
@@ -151,7 +167,7 @@
             <div class="mobile-list-meta">
               <div class="flex items-center gap-2">
                 <span class="text-[var(--color-text-tertiary)]">模式</span>
-                <span class="badge badge-success">{item.mode}</span>
+                <span class="badge badge-success">{modeLabel(item.mode)}</span>
               </div>
               <div class="font-mono truncate">{item.templateId}</div>
               <div class="grid gap-1">

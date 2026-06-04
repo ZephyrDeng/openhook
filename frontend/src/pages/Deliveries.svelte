@@ -2,11 +2,10 @@
   import { deliveries } from '../stores/api.js'
   import { toast } from '../stores/toast.js'
   import Modal from '../components/Modal.svelte'
-  import { Truck, ChevronDown, ChevronUp } from 'lucide-svelte'
+  import { Truck } from 'lucide-svelte'
 
   let items = $state([])
   let loading = $state(true)
-  let expandedId = $state(null)
   let showDetailModal = $state(false)
   let detailItem = $state(null)
 
@@ -47,10 +46,10 @@
     {#if loading}
       <div class="flex items-center justify-center h-64"><div class="w-8 h-8 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin"></div></div>
     {:else if items.length === 0}
-      <div class="flex flex-col items-center justify-center h-64 text-center">
-        <div class="w-12 h-12 rounded-full bg-[var(--color-bg-tertiary)] flex items-center justify-center mb-4"><Truck size={24} class="text-[var(--color-text-tertiary)]" /></div>
-        <p class="text-sm font-medium text-[var(--color-text-primary)]">暂无投递记录</p>
-        <p class="text-sm text-[var(--color-text-secondary)] mt-1">通过路由投递消息后将在这里显示日志</p>
+      <div class="empty-state">
+        <div class="empty-state-icon"><Truck size={24} /></div>
+        <p class="empty-state-title">暂无投递记录</p>
+        <p class="empty-state-desc">通过路由投递消息后将在这里显示日志</p>
       </div>
     {:else}
       <div class="card desktop-table-card">
@@ -66,8 +65,8 @@
             </tr>
           </thead>
           <tbody>
-            {#each items as item (item.id)}
-              <tr class="table-row cursor-pointer" onclick={() => showDetail(item)}>
+            {#each items as item, i (item.id)}
+              <tr class="table-row cursor-pointer" onclick={() => showDetail(item)} style="animation-delay: {i * 20}ms">
                 <td class="table-cell w-10">
                   {#if item.success}
                     <span class="inline-block w-2 h-2 rounded-full bg-[var(--color-success)]"></span>
@@ -93,7 +92,7 @@
           </tbody>
         </table>
       </div>
-      <div class="mobile-card-list">
+      <div class="mobile-card-list stagger-list">
         {#each items as item (item.id)}
           <button type="button" class="mobile-list-card text-left w-full" onclick={() => showDetail(item)}>
             <div class="flex items-start justify-between gap-3">
