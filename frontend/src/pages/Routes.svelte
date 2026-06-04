@@ -47,11 +47,11 @@
   })
 </script>
 
-<div class="flex flex-col h-full">
-  <div class="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border-subtle)]">
+<div class="page-shell">
+  <div class="page-header mobile-stack">
     <div>
-      <h1 class="text-xl font-semibold text-[var(--color-text-primary)]">路由</h1>
-      <p class="text-sm text-[var(--color-text-secondary)] mt-0.5">配置模板与目标 Webhook 地址的映射关系</p>
+      <h1 class="page-title">路由</h1>
+      <p class="page-description">配置模板与目标 Webhook 地址的映射关系</p>
     </div>
     <button class="btn btn-primary" onclick={onNew}>
       <Plus size={16} />
@@ -59,7 +59,7 @@
     </button>
   </div>
 
-  <div class="flex-1 overflow-auto p-6">
+  <div class="page-content">
     {#if loading}
       <div class="flex items-center justify-center h-64">
         <div class="w-8 h-8 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin"></div>
@@ -77,7 +77,7 @@
         </button>
       </div>
     {:else}
-      <div class="card overflow-hidden">
+      <div class="card desktop-table-card">
         <table class="w-full">
           <thead>
             <tr>
@@ -133,6 +133,48 @@
             {/each}
           </tbody>
         </table>
+      </div>
+      <div class="mobile-card-list">
+        {#each items as item (item.routeId)}
+          <article class="mobile-list-card">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <h2 class="text-sm font-semibold text-[var(--color-text-primary)] truncate">{item.name}</h2>
+                <div class="mt-1 text-[11px] text-[var(--color-text-tertiary)] font-mono truncate">{item.routeId}</div>
+              </div>
+              {#if item.enabled}
+                <span class="badge badge-success">启用</span>
+              {:else}
+                <span class="badge badge-error">禁用</span>
+              {/if}
+            </div>
+            <div class="mobile-list-meta">
+              <div class="flex items-center gap-2">
+                <span class="text-[var(--color-text-tertiary)]">模式</span>
+                <span class="badge badge-success">{item.mode}</span>
+              </div>
+              <div class="font-mono truncate">{item.templateId}</div>
+              <div class="grid gap-1">
+                {#each item.targetUrls.slice(0, 2) as url}
+                  <div class="break-all">{url}</div>
+                {/each}
+                {#if item.targetUrls.length > 2}
+                  <div class="text-[var(--color-text-tertiary)]">+{item.targetUrls.length - 2} 更多</div>
+                {/if}
+              </div>
+            </div>
+            <div class="mobile-list-actions">
+              <button class="btn btn-secondary flex-1" onclick={(e) => { e.stopPropagation(); onEdit(item) }}>
+                <Pencil size={14} />
+                编辑
+              </button>
+              <button class="btn btn-danger flex-1" onclick={(e) => { e.stopPropagation(); confirmDelete(item) }}>
+                <Trash2 size={14} />
+                删除
+              </button>
+            </div>
+          </article>
+        {/each}
       </div>
     {/if}
   </div>

@@ -89,9 +89,9 @@
   })
 </script>
 
-<div class="flex flex-col h-full">
+<div class="page-shell">
   <!-- Header -->
-  <div class="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border-subtle)]">
+  <div class="page-header">
     <div class="flex items-center gap-3">
       <button class="btn btn-ghost p-2" onclick={onBack} title="返回">
         <ArrowLeft size={18} />
@@ -101,7 +101,7 @@
         <p class="text-sm text-[var(--color-text-secondary)] mt-0.5">{isEdit ? template.templateId : '创建一个新的消息模板'}</p>
       </div>
     </div>
-    <div class="flex items-center gap-2">
+    <div class="desktop-actions">
       <button class="btn btn-secondary" onclick={onBack}>取消</button>
       <button class="btn btn-primary" onclick={save} disabled={saving}>
         <Save size={16} />
@@ -111,9 +111,9 @@
   </div>
 
   <!-- Content -->
-  <div class="flex-1 flex overflow-hidden">
+  <div class="editor-split">
     <!-- Left: Form -->
-    <div class="flex-1 overflow-auto p-6 border-r border-[var(--color-border-subtle)]">
+    <div class="editor-form-pane">
       <div class="max-w-2xl space-y-5">
         <!-- Name -->
         <div>
@@ -141,9 +141,9 @@
 
         <!-- Content -->
         <div>
-          <div class="flex items-center justify-between mb-1.5">
+            <div class="flex items-start md:items-center justify-between gap-3 mb-1.5">
             <label for="template-content" class="text-sm font-medium text-[var(--color-text-primary)]">模板内容</label>
-            <span class="text-xs text-[var(--color-text-tertiary)]">支持 {'{{'}data.xxx{'}}'} 和 {'{{'}global.xxx{'}}'} 占位符</span>
+            <span class="text-xs text-[var(--color-text-tertiary)] text-right md:text-left">支持 {'{{'}data.xxx{'}}'} 和 {'{{'}global.xxx{'}}'} 占位符</span>
           </div>
           <textarea
             id="template-content"
@@ -175,7 +175,7 @@
     </div>
 
     <!-- Right: Preview -->
-    <div class="w-[420px] flex-shrink-0 flex flex-col bg-[var(--color-bg-secondary)]">
+    <div class="editor-preview-pane">
       <div class="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border-subtle)]">
         <h3 class="text-sm font-medium text-[var(--color-text-primary)]">实时预览</h3>
         <button class="btn btn-ghost text-xs px-2 py-1" onclick={doPreview}>
@@ -235,5 +235,13 @@
         {/if}
       </div>
     </div>
+  </div>
+
+  <div class="mobile-sticky-actions">
+    <button class="btn btn-secondary" onclick={onBack}>取消</button>
+    <button class="btn btn-primary" onclick={save} disabled={saving}>
+      <Save size={16} />
+      {saving ? '保存中' : '保存'}
+    </button>
   </div>
 </div>
