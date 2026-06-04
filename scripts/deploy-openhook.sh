@@ -6,7 +6,7 @@ DEPLOY_HOST="${OPENHOOK_DEPLOY_HOST:-openhook}"
 REMOTE_BIN="${OPENHOOK_REMOTE_BIN:-/opt/openhook/openhook}"
 REMOTE_SERVICE="${OPENHOOK_REMOTE_SERVICE:-openhook}"
 REMOTE_ENV_FILE="${OPENHOOK_REMOTE_ENV_FILE:-/etc/openhook/openhook.env}"
-PUBLIC_URL="${OPENHOOK_PUBLIC_URL:-https://commute-planner.site}"
+PUBLIC_URL="${OPENHOOK_PUBLIC_URL:?OPENHOOK_PUBLIC_URL is required}"
 BUILD_PATH="${ROOT_DIR}/bin/openhook-linux-amd64"
 DRY_RUN="${OPENHOOK_DEPLOY_DRY_RUN:-0}"
 

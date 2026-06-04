@@ -49,6 +49,37 @@ func TestRouteDeliverForwardsRenderedPayload(t *testing.T) {
 	}
 }
 
+func TestRouteWebhookEndpointForwardsRenderedPayload(t *testing.T) {
+	var received map[string]any
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Fatal(err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer target.Close()
+
+	db := openTestDB(t)
+	defer db.Close()
+	app := NewServer(store.New(db), config.Config{RequestTimeout: 0}, nil)
+
+	templateID := createTemplate(t, app)
+	routeID := createRoute(t, app, templateID, target.URL)
+
+	req := httptest.NewRequest(http.MethodPost, "/webhook/routes/"+routeID, bytes.NewBufferString(`{"title":"hello"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if received["content"] != "title: hello" {
+		t.Fatalf("unexpected forwarded body: %#v", received)
+	}
+}
+
 func TestRouteDeliverRedactsTargetURLInResponse(t *testing.T) {
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -279,6 +310,34 @@ func TestAuthenticatedUsersSeeOnlyOwnedTemplatesAndRoutes(t *testing.T) {
 	assertListContainsOnly(t, app, bobCookie, "/api/routes", "bob")
 }
 
+func TestGitHubSessionFiltersTemplatesWhenAdminTokenHeaderIsPresent(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+	st := store.New(db)
+	app := NewServer(st, config.Config{AdminToken: "secret", GitHubClientID: "client", GitHubClientSecret: "secret"}, nil)
+
+	aliceCookie := createTestSession(t, st, "1001", "alice")
+	bobCookie := createTestSession(t, st, "1002", "bob")
+
+	createTemplateWithCookie(t, app, aliceCookie, "alice-private")
+	createTemplateWithCookie(t, app, bobCookie, "bob-private")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/templates", nil)
+	req.AddCookie(bobCookie)
+	req.Header.Set("X-OpenHook-Admin-Token", "secret")
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("templates status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "bob-private") {
+		t.Fatalf("bob template missing: %s", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "alice-private") {
+		t.Fatalf("alice private template leaked through admin token header: %s", rec.Body.String())
+	}
+}
+
 func TestPublicTemplatesAreReusableButEditableOnlyByOwner(t *testing.T) {
 	db := openTestDB(t)
 	defer db.Close()
@@ -323,6 +382,39 @@ func TestPublicTemplatesAreReusableButEditableOnlyByOwner(t *testing.T) {
 	app.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("alice editing public template status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMetaEndpointExposesRepositoryAndVersion(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+	st := store.New(db)
+	app := NewServer(st, config.Config{}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/meta", nil)
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("meta status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var envelope struct {
+		Data struct {
+			Name       string `json:"name"`
+			Repository string `json:"repository"`
+			Version    string `json:"version"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.Data.Name != "OpenHook" {
+		t.Fatalf("unexpected meta name: %#v", envelope.Data)
+	}
+	if envelope.Data.Repository != "https://github.com/ZephyrDeng/openhook" {
+		t.Fatalf("unexpected repository: %#v", envelope.Data)
+	}
+	if envelope.Data.Version == "" {
+		t.Fatalf("version is empty: %#v", envelope.Data)
 	}
 }
 

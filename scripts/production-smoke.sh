@@ -2,14 +2,14 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-API_BASE="${OPENHOOK_API_BASE:-https://commute-planner.site}"
+API_BASE="${OPENHOOK_API_BASE:?OPENHOOK_API_BASE is required}"
 
 usage() {
   cat >&2 <<'EOF'
 usage: scripts/production-smoke.sh
 
 Environment:
-  OPENHOOK_API_BASE                 default: https://commute-planner.site
+  OPENHOOK_API_BASE                 production OpenHook base URL
   OPENHOOK_REQUIRE_GITHUB=1         require /api/auth/me githubEnabled=true
 
 Existing route IDs:

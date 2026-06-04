@@ -1,4 +1,4 @@
-.PHONY: lint test frontend-build build build-all run run-dev bootstrap deploy deploy-production production-smoke production-readiness tidy e2e deploy-openhook-test deploy-production-test provider-smoke-test qq-token-smoke-test qq-c2c-smoke-test production-smoke-test production-readiness-test frontend-nav-test mobile-layout-test bootstrap-test ci clean
+.PHONY: lint test frontend-build build build-all run run-dev bootstrap deploy deploy-production production-smoke production-readiness tidy e2e deploy-openhook-test deploy-production-test provider-smoke-test qq-token-smoke-test qq-c2c-smoke-test production-smoke-test production-readiness-test frontend-nav-test mobile-layout-test frontend-content-test bootstrap-test ci clean
 
 lint:
 	test -z "$$(gofmt -l cmd internal)"
@@ -69,10 +69,13 @@ frontend-nav-test:
 mobile-layout-test:
 	scripts/mobile-layout-test.sh
 
+frontend-content-test:
+	scripts/frontend-content-test.sh
+
 bootstrap-test:
 	scripts/bootstrap-openhook-server-test.sh
 
-ci: lint test frontend-nav-test mobile-layout-test build e2e
+ci: lint test frontend-nav-test mobile-layout-test frontend-content-test build e2e
 
 clean:
 	rm -rf bin dist coverage.out

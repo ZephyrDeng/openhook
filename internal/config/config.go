@@ -18,6 +18,7 @@ type Config struct {
 	GitHubTokenURL     string
 	GitHubUserURL      string
 	SessionTTL         time.Duration
+	RepositoryURL      string
 }
 
 func Load() Config {
@@ -33,6 +34,7 @@ func Load() Config {
 		GitHubTokenURL:     env("OPENHOOK_GITHUB_TOKEN_URL", "https://github.com/login/oauth/access_token"),
 		GitHubUserURL:      env("OPENHOOK_GITHUB_USER_URL", "https://api.github.com/user"),
 		SessionTTL:         envDuration("OPENHOOK_SESSION_TTL", 30*24*time.Hour),
+		RepositoryURL:      env("OPENHOOK_REPOSITORY_URL", "https://github.com/ZephyrDeng/openhook"),
 	}
 }
 

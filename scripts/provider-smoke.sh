@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-API_BASE="${OPENHOOK_API_BASE:-https://commute-planner.site}"
+API_BASE="${OPENHOOK_API_BASE:-http://localhost:8080}"
 PROVIDER="${1:-}"
 
 usage() {
@@ -9,7 +9,7 @@ usage() {
 usage: scripts/provider-smoke.sh <wecom|wecom-text|telegram|telegram-text|qq>
 
 Environment:
-  OPENHOOK_API_BASE                 default: https://commute-planner.site
+  OPENHOOK_API_BASE                 default: http://localhost:8080
   OPENHOOK_ROUTE_ID                 existing route id to deliver through
   OPENHOOK_ADMIN_TOKEN              optional, used when creating a route
 
@@ -109,7 +109,7 @@ if [[ -z "${ROUTE_ID}" ]]; then
   ROUTE_ID="$(printf '%s' "${route_resp}" | json_field '.data.routeId')"
 fi
 
-deliver_resp="$(api POST "/api/routes/${ROUTE_ID}/deliver" "${PAYLOAD}")"
+deliver_resp="$(api POST "/webhook/routes/${ROUTE_ID}" "${PAYLOAD}")"
 printf '%s\n' "${deliver_resp}" | jq '{
   code,
   statusCode: .data[0].statusCode,

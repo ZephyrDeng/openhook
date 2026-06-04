@@ -30,8 +30,8 @@ usage: scripts/bootstrap-openhook-server.sh
 
 Environment:
   OPENHOOK_DEPLOY_HOST=openhook
-  OPENHOOK_DOMAIN=commute-planner.site
-  OPENHOOK_PUBLIC_BASE_URL=https://commute-planner.site
+  OPENHOOK_DOMAIN=your-domain.example
+  OPENHOOK_PUBLIC_BASE_URL=https://your-domain.example
   OPENHOOK_ADMIN_TOKEN=optional-existing-token
   OPENHOOK_TLS_EMAIL=you@example.com
   OPENHOOK_ENABLE_TLS=1

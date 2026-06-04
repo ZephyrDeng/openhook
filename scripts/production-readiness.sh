@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-API_BASE="${OPENHOOK_API_BASE:-https://commute-planner.site}"
+API_BASE="${OPENHOOK_API_BASE:?OPENHOOK_API_BASE is required}"
 DEPLOY_HOST="${OPENHOOK_DEPLOY_HOST:-openhook}"
 REMOTE_SERVICE="${OPENHOOK_REMOTE_SERVICE:-openhook}"
 REMOTE_ENV_FILE="${OPENHOOK_REMOTE_ENV_FILE:-/etc/openhook/openhook.env}"
@@ -16,7 +16,7 @@ usage() {
 usage: scripts/production-readiness.sh
 
 Environment:
-  OPENHOOK_API_BASE                 default: https://commute-planner.site
+  OPENHOOK_API_BASE                 production OpenHook base URL
   OPENHOOK_DEPLOY_HOST              default: openhook
   OPENHOOK_REMOTE_SERVICE           default: openhook
   OPENHOOK_REMOTE_ENV_FILE          default: /etc/openhook/openhook.env
