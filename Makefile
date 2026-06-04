@@ -1,4 +1,4 @@
-.PHONY: lint test frontend-build build build-all run run-dev bootstrap deploy deploy-production production-smoke tidy e2e deploy-openhook-test provider-smoke-test production-smoke-test bootstrap-test ci clean
+.PHONY: lint test frontend-build build build-all run run-dev bootstrap deploy deploy-production production-smoke tidy e2e deploy-openhook-test provider-smoke-test qq-token-smoke-test qq-c2c-smoke-test production-smoke-test bootstrap-test ci clean
 
 lint:
 	test -z "$$(gofmt -l cmd internal)"
@@ -44,6 +44,12 @@ deploy-openhook-test:
 
 provider-smoke-test:
 	scripts/provider-smoke-test.sh
+
+qq-token-smoke-test:
+	scripts/qq-token-smoke-test.sh
+
+qq-c2c-smoke-test:
+	scripts/qq-c2c-smoke-test.sh
 
 production-smoke-test:
 	scripts/production-smoke-test.sh
