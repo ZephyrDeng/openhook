@@ -46,6 +46,14 @@
   $effect(() => {
     load()
   })
+
+  const visibilityLabel = (v) => v === 'public' ? '公开' : '私有'
+  const msgTypeLabel = (t) => {
+    if (t === 'markdown') return 'Markdown'
+    if (t === 'text') return '纯文本'
+    if (t === 'html') return 'HTML'
+    return t
+  }
 </script>
 
 <div class="page-shell">
@@ -68,7 +76,7 @@
       <input
         type="text"
         class="input pl-9"
-        placeholder="搜索模板..."
+        placeholder="搜索模板名称..."
         bind:value={searchQuery}
         oninput={() => load()}
       />
@@ -82,13 +90,13 @@
         <div class="w-8 h-8 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin"></div>
       </div>
     {:else if items.length === 0}
-      <div class="flex flex-col items-center justify-center h-64 text-center">
-        <div class="w-12 h-12 rounded-full bg-[var(--color-bg-tertiary)] flex items-center justify-center mb-4">
-          <FileText size={24} class="text-[var(--color-text-tertiary)]" />
+      <div class="empty-state">
+        <div class="empty-state-icon">
+          <FileText size={24} />
         </div>
-        <p class="text-sm font-medium text-[var(--color-text-primary)]">还没有消息模板</p>
-        <p class="text-sm text-[var(--color-text-secondary)] mt-1">创建一个模板来定义你的 Webhook 消息格式</p>
-        <button class="btn btn-primary mt-4" onclick={onNew}>
+        <p class="empty-state-title">还没有消息模板</p>
+        <p class="empty-state-desc">创建一个模板来定义你的 Webhook 消息格式</p>
+        <button class="btn btn-primary" onclick={onNew}>
           <Plus size={16} />
           新建模板
         </button>
@@ -106,20 +114,20 @@
             </tr>
           </thead>
           <tbody>
-            {#each items as item (item.templateId)}
-              <tr class="table-row {item.canEdit ? 'cursor-pointer' : ''}" onclick={() => item.canEdit && onEdit(item)}>
+            {#each items as item, i (item.templateId)}
+              <tr class="table-row {item.canEdit ? 'cursor-pointer' : ''}" onclick={() => item.canEdit && onEdit(item)} style="animation-delay: {i * 30}ms">
                 <td class="table-cell">
                   <div class="font-medium text-[var(--color-text-primary)]">{item.templateName}</div>
                   <div class="text-xs text-[var(--color-text-tertiary)] mt-0.5 font-mono">{item.templateId}</div>
                 </td>
                 <td class="table-cell">
-                  <span class="badge badge-success">{item.msgType}</span>
+                  <span class="badge badge-success">{msgTypeLabel(item.msgType)}</span>
                 </td>
                 <td class="table-cell">
                   {#if item.visibility === 'public'}
-                    <span class="badge badge-warning">public</span>
+                    <span class="badge badge-warning">{visibilityLabel(item.visibility)}</span>
                   {:else}
-                    <span class="badge badge-success">private</span>
+                    <span class="badge badge-success">{visibilityLabel(item.visibility)}</span>
                   {/if}
                 </td>
                 <td class="table-cell">
@@ -132,6 +140,7 @@
                         class="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] transition-colors"
                         onclick={(e) => { e.stopPropagation(); onEdit(item) }}
                         title="编辑"
+                        aria-label="编辑模板"
                       >
                         <Pencil size={14} />
                       </button>
@@ -141,6 +150,7 @@
                         class="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:text-[var(--color-error)] transition-colors"
                         onclick={(e) => { e.stopPropagation(); confirmDelete(item) }}
                         title="删除"
+                        aria-label="删除模板"
                       >
                         <Trash2 size={14} />
                       </button>
@@ -152,7 +162,7 @@
           </tbody>
         </table>
       </div>
-      <div class="mobile-card-list">
+      <div class="mobile-card-list stagger-list">
         {#each items as item (item.templateId)}
           <article class="mobile-list-card">
             <div class="flex items-start justify-between gap-3">
@@ -161,15 +171,15 @@
                 <div class="mt-1 text-[11px] text-[var(--color-text-tertiary)] font-mono truncate">{item.templateId}</div>
               </div>
               {#if item.visibility === 'public'}
-                <span class="badge badge-warning">public</span>
+                <span class="badge badge-warning">{visibilityLabel(item.visibility)}</span>
               {:else}
-                <span class="badge badge-success">private</span>
+                <span class="badge badge-success">{visibilityLabel(item.visibility)}</span>
               {/if}
             </div>
             <div class="mobile-list-meta">
               <div class="flex items-center gap-2">
                 <span class="text-[var(--color-text-tertiary)]">类型</span>
-                <span class="badge badge-success">{item.msgType}</span>
+                <span class="badge badge-success">{msgTypeLabel(item.msgType)}</span>
               </div>
               <div class="break-words text-[var(--color-text-secondary)]">{item.content}</div>
             </div>

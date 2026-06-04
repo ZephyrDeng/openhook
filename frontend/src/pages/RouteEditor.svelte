@@ -1,6 +1,7 @@
 <script>
   import { routes, templates, middlewares as mwApi } from '../stores/api.js'
   import { toast } from '../stores/toast.js'
+  import FormField from '../components/FormField.svelte'
   import { ArrowLeft, Save, Plus, Trash2, Send, X } from 'lucide-svelte'
   import Modal from '../components/Modal.svelte'
 
@@ -24,12 +25,21 @@
   }
 
   let form = $state(buildForm(null))
+  let touched = $state({})
 
   let saving = $state(false)
   let showTestModal = $state(false)
   let testData = $state('{\n  "title": "Test Alert",\n  "severity": "info",\n  "service": "test"\n}')
   let testResult = $state(null)
   let testLoading = $state(false)
+
+  const errors = $derived({
+    name: touched.name && !form.name.trim() ? '请输入路由名称' : '',
+    templateId: touched.templateId && !form.templateId ? '请选择消息模板' : '',
+    targetUrls: touched.targetUrls && !form.targetUrls.some(u => u.trim()) ? '至少填写一个目标地址' : '',
+  })
+
+  const hasErrors = $derived(Object.values(errors).some(Boolean))
 
   async function loadRefs() {
     try {
@@ -46,6 +56,7 @@
 
   function addTargetUrl() {
     form.targetUrls = [...form.targetUrls, '']
+    touched.targetUrls = true
   }
 
   function removeTargetUrl(idx) {
@@ -69,6 +80,11 @@
   }
 
   async function save() {
+    touched = { name: true, templateId: true, targetUrls: true }
+    if (hasErrors) {
+      toast.error('请填写必填字段')
+      return
+    }
     saving = true
     try {
       const body = {
@@ -126,16 +142,27 @@
     form.middlewareIds = next.middlewareIds
     form.mode = next.mode
     form.enabled = next.enabled
+    touched = {}
   })
+
+  const modeOptions = [
+    { value: 'envelope', label: '包装消息 (envelope)', desc: '将内容包装在标准消息信封中发送' },
+    { value: 'raw', label: '原始内容 (raw)', desc: '直接发送原始渲染内容' },
+  ]
 </script>
 
 <div class="page-shell">
   <div class="page-header">
     <div class="flex items-center gap-3">
-      <button class="btn btn-ghost p-2" onclick={onBack}>
+      <button class="btn btn-ghost p-2" onclick={onBack} title="返回列表" aria-label="返回列表">
         <ArrowLeft size={18} />
       </button>
       <div>
+        <div class="breadcrumb">
+          <button onclick={onBack}>路由</button>
+          <span>/</span>
+          <span>{isEdit ? '编辑' : '新建'}</span>
+        </div>
         <h1 class="text-xl font-semibold text-[var(--color-text-primary)]">{isEdit ? '编辑路由' : '新建路由'}</h1>
       </div>
     </div>
@@ -149,84 +176,109 @@
       <button class="btn btn-secondary" onclick={onBack}>取消</button>
       <button class="btn btn-primary" onclick={save} disabled={saving}>
         <Save size={16} />
-        {saving ? '保存中...' : '保存'}
+        {saving ? '保存中' : '保存'}
       </button>
     </div>
   </div>
 
   <div class="page-content">
     <div class="max-w-2xl space-y-5">
-      <!-- Name -->
-      <div>
-        <label for="route-name" class="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">路由名称</label>
-        <input id="route-name" type="text" class="input" bind:value={form.name} placeholder="例如: generic-alert-route" />
-      </div>
+      <FormField label="路由名称" forId="route-name" required error={errors.name}>
+        <input
+          id="route-name"
+          type="text"
+          class="input"
+          bind:value={form.name}
+          onblur={() => touched.name = true}
+          placeholder="例如: generic-alert-route"
+        />
+      </FormField>
 
-      <!-- Template -->
-      <div>
-        <label for="route-template" class="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">消息模板</label>
-        <select id="route-template" class="input" bind:value={form.templateId}>
+      <FormField label="消息模板" forId="route-template" required error={errors.templateId} helper="选择要使用的消息模板">
+        <select id="route-template" class="input" bind:value={form.templateId} onchange={() => touched.templateId = true}>
           <option value="">选择模板...</option>
           {#each tplList as tpl}
-            <option value={tpl.templateId}>{tpl.templateName} · {tpl.visibility || 'private'} ({tpl.templateId})</option>
+            <option value={tpl.templateId}>{tpl.templateName} · {tpl.visibility === 'public' ? '公开' : '私有'} ({tpl.templateId})</option>
           {/each}
         </select>
-      </div>
+      </FormField>
 
       <!-- Target URLs -->
-      <div>
-        <div class="flex items-center justify-between mb-1.5">
-          <span class="text-sm font-medium text-[var(--color-text-primary)]">目标 Webhook 地址</span>
-          <button class="text-xs text-[var(--color-accent)] hover:underline flex items-center gap-0.5" onclick={addTargetUrl}>
+      <div class="form-section">
+        <div class="flex items-center justify-between mb-3">
+          <span class="form-section-title">目标 Webhook 地址</span>
+          <button class="text-xs text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] flex items-center gap-0.5 transition-colors" onclick={addTargetUrl}>
             <Plus size={12} />添加地址
           </button>
         </div>
         <div class="space-y-2">
           {#each form.targetUrls as url, idx}
             <div class="dynamic-field-row">
-              <input type="text" class="input flex-1" bind:value={form.targetUrls[idx]} aria-label={`目标 Webhook 地址 ${idx + 1}`} placeholder="https://example.com/webhook" />
+              <input
+                type="text"
+                class="input flex-1"
+                bind:value={form.targetUrls[idx]}
+                aria-label={`目标 Webhook 地址 ${idx + 1}`}
+                placeholder="https://example.com/webhook"
+              />
               {#if form.targetUrls.length > 1}
-                <button class="icon-button p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-tertiary)] hover:text-[var(--color-error)]" onclick={() => removeTargetUrl(idx)}>
+                <button
+                  class="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-tertiary)] hover:text-[var(--color-error)] transition-colors"
+                  onclick={() => removeTargetUrl(idx)}
+                  aria-label="删除此地址"
+                >
                   <Trash2 size={14} />
                 </button>
               {/if}
             </div>
           {/each}
         </div>
+        {#if errors.targetUrls}
+          <p class="form-error mt-1.5" role="alert">{errors.targetUrls}</p>
+        {/if}
       </div>
 
       <!-- Headers -->
-      <div>
-        <div class="flex items-center justify-between mb-1.5">
-          <span class="text-sm font-medium text-[var(--color-text-primary)]">自定义请求头</span>
-          <button class="text-xs text-[var(--color-accent)] hover:underline flex items-center gap-0.5" onclick={addHeader}>
+      <div class="form-section">
+        <div class="flex items-center justify-between mb-3">
+          <span class="form-section-title">自定义请求头</span>
+          <button class="text-xs text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] flex items-center gap-0.5 transition-colors" onclick={addHeader}>
             <Plus size={12} />添加请求头
           </button>
         </div>
-        <div class="space-y-2">
-          {#each form.headers as h, idx}
-            <div class="dynamic-field-row stack-mobile">
-              <input type="text" class="input flex-1" bind:value={form.headers[idx].key} aria-label={`请求头名称 ${idx + 1}`} placeholder="Header 名" />
-              <input type="text" class="input flex-1" bind:value={form.headers[idx].value} aria-label={`请求头值 ${idx + 1}`} placeholder="Header 值" />
-              <button class="icon-button p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-tertiary)] hover:text-[var(--color-error)]" onclick={() => removeHeader(idx)}>
-                <Trash2 size={14} />
-              </button>
-            </div>
-          {/each}
-        </div>
+        {#if form.headers.length === 0}
+          <p class="text-sm text-[var(--color-text-tertiary)]">未配置自定义请求头</p>
+        {:else}
+          <div class="space-y-2">
+            {#each form.headers as h, idx}
+              <div class="dynamic-field-row stack-mobile">
+                <input type="text" class="input flex-1" bind:value={form.headers[idx].key} aria-label={`请求头名称 ${idx + 1}`} placeholder="Header 名 (如 Content-Type)" />
+                <input type="text" class="input flex-1" bind:value={form.headers[idx].value} aria-label={`请求头值 ${idx + 1}`} placeholder="Header 值" />
+                <button
+                  class="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-tertiary)] hover:text-[var(--color-error)] transition-colors"
+                  onclick={() => removeHeader(idx)}
+                  aria-label="删除此请求头"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            {/each}
+          </div>
+        {/if}
       </div>
 
       {#if allowMiddlewares}
-        <div>
-          <span class="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">中间件</span>
+        <div class="form-section">
+          <span class="form-section-title">中间件</span>
           {#if mwList.length === 0}
             <p class="text-sm text-[var(--color-text-tertiary)]">暂无中间件，请先创建中间件</p>
           {:else}
             <div class="flex flex-wrap gap-2">
               {#each mwList as mw}
                 <button
-                  class="px-3 py-1.5 rounded-md text-xs font-medium border transition-all {form.middlewareIds.includes(mw.middlewareId) ? 'bg-[var(--color-accent)]/10 border-[var(--color-accent)] text-[var(--color-accent)]' : 'bg-[var(--color-bg-primary)] border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:border-[var(--color-border-default)]'}"
+                  class="px-3 py-1.5 rounded-md text-xs font-medium border transition-all duration-150 {form.middlewareIds.includes(mw.middlewareId) ? 'bg-[var(--color-accent)]/10 border-[var(--color-accent)] text-[var(--color-accent)]' : 'bg-[var(--color-bg-primary)] border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:border-[var(--color-border-default)]'}"
                   onclick={() => toggleMiddleware(mw.middlewareId)}
+                  type="button"
                 >
                   {mw.name}
                 </button>
@@ -237,22 +289,21 @@
       {/if}
 
       <!-- Mode -->
-      <div>
-        <span class="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">投递模式</span>
+      <FormField label="投递模式" helper="选择消息发送格式">
         <div class="mode-grid">
-          <label class="flex items-center gap-2 px-3 py-2 rounded-md border border-[var(--color-border-default)] cursor-pointer hover:border-[var(--color-accent)] transition-colors {form.mode === 'envelope' ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/5' : ''}">
-            <input type="radio" bind:group={form.mode} value="envelope" class="accent-[var(--color-accent)]" />
-            <span class="text-sm">envelope（包装消息）</span>
-          </label>
-          <label class="flex items-center gap-2 px-3 py-2 rounded-md border border-[var(--color-border-default)] cursor-pointer hover:border-[var(--color-accent)] transition-colors {form.mode === 'raw' ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/5' : ''}">
-            <input type="radio" bind:group={form.mode} value="raw" class="accent-[var(--color-accent)]" />
-            <span class="text-sm">raw（原始内容）</span>
-          </label>
+          {#each modeOptions as opt}
+            <label class="flex items-start gap-2.5 px-3 py-2.5 rounded-md border border-[var(--color-border-default)] cursor-pointer hover:border-[var(--color-accent)] transition-colors duration-150 {form.mode === opt.value ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/5' : ''}">
+              <input type="radio" bind:group={form.mode} value={opt.value} class="accent-[var(--color-accent)] mt-0.5" />
+              <div>
+                <span class="text-sm font-medium">{opt.label}</span>
+                <p class="text-xs text-[var(--color-text-tertiary)] mt-0.5">{opt.desc}</p>
+              </div>
+            </label>
+          {/each}
         </div>
-      </div>
+      </FormField>
 
-      <!-- Enabled -->
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 py-2">
         <input type="checkbox" id="enabled" bind:checked={form.enabled} class="w-4 h-4 accent-[var(--color-accent)]" />
         <label for="enabled" class="text-sm text-[var(--color-text-primary)]">启用此路由</label>
       </div>
@@ -277,10 +328,9 @@
 <!-- Test Modal -->
 <Modal show={showTestModal} title="测试投递" onclose={() => showTestModal = false}>
   <div class="space-y-4">
-    <div>
-      <label for="route-test-data" class="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">测试数据 (JSON)</label>
+    <FormField label="测试数据 (JSON)" forId="route-test-data">
       <textarea id="route-test-data" class="input font-mono text-xs" style="min-height: 120px;" bind:value={testData}></textarea>
-    </div>
+    </FormField>
 
     {#if testResult}
       <div>
@@ -290,13 +340,13 @@
         {:else}
           <div class="space-y-2">
             {#each testResult as result}
-              <div class="flex items-center gap-2 text-sm">
+              <div class="flex items-center gap-2 text-sm flex-wrap">
                 {#if result.code === 0}
                   <span class="badge badge-success">成功</span>
                 {:else}
                   <span class="badge badge-error">失败</span>
                 {/if}
-                <span class="text-[var(--color-text-secondary)]">{result.targetUrl}</span>
+                <span class="text-[var(--color-text-secondary)] break-all">{result.targetUrl}</span>
                 <span class="text-[var(--color-text-tertiary)]">{result.message}</span>
               </div>
             {/each}
