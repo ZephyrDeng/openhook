@@ -157,6 +157,14 @@ scripts/production-smoke.sh
 
 The smoke script checks `/health`, `/api/auth/me`, WeCom when `OPENHOOK_WECOM_ROUTE_ID` or `WECOM_WEBHOOK_URL` is present, Telegram when `OPENHOOK_TELEGRAM_ROUTE_ID` or `TELEGRAM_WEBHOOK_URL` plus `TELEGRAM_CHAT_ID` are present, QQ official bot token access when `QQ_APP_ID` and `QQ_APP_SECRET` are present, QQ official C2C delivery when `QQ_OPENID` is also present, and QQ route delivery when `OPENHOOK_QQ_ROUTE_ID` or `QQ_WEBHOOK_URL` is present. Missing provider credentials are reported as skips so the same command can be used while QQ and Telegram delivery targets are still being prepared.
 
+Production readiness audit:
+
+```bash
+scripts/production-readiness.sh
+```
+
+The readiness script checks `/health`, GitHub auth readiness, `openhook.service`, the production SQLite DB, GitHub users, user-owned starter templates, and the enabled production WeCom route. It is also available through `make production-readiness`.
+
 Production environment file example:
 
 ```bash
