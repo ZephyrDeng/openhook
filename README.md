@@ -116,29 +116,19 @@ scripts/deploy-openhook.sh
 
 The script builds the frontend, runs Go tests, runs local e2e, cross-compiles a Linux amd64 binary, uploads it to `/opt/openhook/openhook`, restarts `openhook.service`, and checks `/health`.
 
-One-command deploy with production smoke:
+One-command production deploy with WeCom production smoke:
 
 ```bash
-OPENHOOK_DEPLOY_HOST=openhook \
-OPENHOOK_PUBLIC_URL=https://commute-planner.site \
-OPENHOOK_REQUIRE_GITHUB=1 \
-OPENHOOK_RUN_PRODUCTION_SMOKE=1 \
-OPENHOOK_WECOM_ROUTE_ID=rt_xxx \
-QQ_APP_ID=qq-bot-app-id \
-QQ_APP_SECRET=qq-bot-app-secret \
-QQ_OPENID=qq-c2c-recipient-openid \
-scripts/deploy-openhook.sh
+scripts/deploy-production.sh
 ```
 
 The same path is available through:
 
 ```bash
-OPENHOOK_DEPLOY_HOST=openhook \
-OPENHOOK_PUBLIC_URL=https://commute-planner.site \
-OPENHOOK_REQUIRE_GITHUB=1 \
-OPENHOOK_WECOM_ROUTE_ID=rt_xxx \
 make deploy-production
 ```
+
+`scripts/deploy-production.sh` defaults to `OPENHOOK_DEPLOY_HOST=openhook`, `OPENHOOK_PUBLIC_URL=https://commute-planner.site`, `OPENHOOK_REQUIRE_GITHUB=1`, `OPENHOOK_RUN_PRODUCTION_SMOKE=1`, and the current production WeCom route ID. Override any of those environment variables when deploying a different host or route.
 
 To enable GitHub registration/login during the same deploy:
 
