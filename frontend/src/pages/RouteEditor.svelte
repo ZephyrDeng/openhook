@@ -1,5 +1,5 @@
 <script>
-  import { routes, templates, middlewares as mwApi } from '../stores/api.js'
+  import { routes, templates, middlewares as mwApi, publicWebhookUrl as buildPublicWebhookUrl } from '../stores/api.js'
   import { toast } from '../stores/toast.js'
   import FormField from '../components/FormField.svelte'
   import { ArrowLeft, Copy, Save, Plus, Trash2, Send, X, MessagesSquare } from 'lucide-svelte'
@@ -132,7 +132,7 @@
 
   const publicWebhookUrl = $derived(
     isEdit && typeof window !== 'undefined'
-      ? `${window.location.origin}/webhook/routes/${route.routeId}`
+      ? buildPublicWebhookUrl(window.location.origin, route.routeId)
       : ''
   )
 
