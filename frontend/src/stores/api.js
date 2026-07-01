@@ -6,13 +6,49 @@ function adminToken() {
   return localStorage.getItem('openhook-token') || ''
 }
 
+function apiEndpointTemplate() {
+  return import.meta.env.VITE_OPENHOOK_API_ENDPOINT || ''
+}
+
+function webhookEndpointTemplate() {
+  return import.meta.env.VITE_OPENHOOK_WEBHOOK_ENDPOINT || ''
+}
+
+function endpointFromTemplate(template, path) {
+  if (!template) {
+    return path
+  }
+  return template
+    .replaceAll('{path}', encodeURIComponent(path))
+    .replaceAll('{rawPath}', path)
+}
+
+function apiUrl(path) {
+  const base = apiBase()
+  if (base) {
+    return `${base}${path}`
+  }
+  return endpointFromTemplate(apiEndpointTemplate(), path)
+}
+
+export function webhookDeliveryPath(routeId = '{routeId}') {
+  const path = `/webhook/routes/${routeId}`
+  return endpointFromTemplate(webhookEndpointTemplate(), path)
+}
+
+export function publicWebhookUrl(origin, routeId = '{routeId}') {
+  return `${origin}${webhookDeliveryPath(routeId)}`
+}
+
 async function api(path, opts = {}) {
   const token = adminToken()
-  const url = `${apiBase()}${path}`
+  const url = apiUrl(path)
   const headers = {
-    'Content-Type': 'application/json',
     ...(token ? { 'X-OpenHook-Admin-Token': token } : {}),
     ...opts.headers,
+  }
+  if (opts.body !== undefined && !hasHeader(headers, 'content-type')) {
+    headers['Content-Type'] = 'application/json'
   }
 
   const res = await fetch(url, {
@@ -29,6 +65,10 @@ async function api(path, opts = {}) {
   }
 
   return data
+}
+
+function hasHeader(headers, name) {
+  return Object.keys(headers).some((key) => key.toLowerCase() === name)
 }
 
 export const auth = {

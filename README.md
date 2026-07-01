@@ -79,6 +79,18 @@ https://your-domain.example/register/github
 
 Logged-in users get isolated templates and routes. A template can be published as `public` so other users can reuse it in their own routes. Admin-token requests can manage all templates, routes, tokens, middlewares, hidden rule-storage APIs, and delivery logs.
 
+### Frontend Endpoint Templates
+
+When the console is deployed behind a function gateway or reverse proxy that cannot expose OpenHook routes directly, build the frontend with endpoint templates:
+
+```bash
+VITE_OPENHOOK_API_ENDPOINT='/api?path={path}' \
+VITE_OPENHOOK_WEBHOOK_ENDPOINT='/api?path={path}' \
+npm run build
+```
+
+`{path}` is URL encoded before replacement. `{rawPath}` is also supported when the proxy expects the original path string. Leave both variables empty for the default direct routes such as `/api/meta` and `/webhook/routes/{routeId}`.
+
 ## Docker
 
 ```bash

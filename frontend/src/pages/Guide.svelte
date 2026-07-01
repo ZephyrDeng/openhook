@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte'
   import { Braces, FileText, Route, Send, Workflow } from 'lucide-svelte'
+  import { publicWebhookUrl as buildPublicWebhookUrl, webhookDeliveryPath } from '../stores/api.js'
 
   const templateFields = [
     { name: '模板名称', value: '例如 generic-alert，用于列表和路由选择' },
@@ -34,14 +35,14 @@
   "requestId": "req_xxx"
 }`
 
-  const webhookPath = '/webhook/routes/{routeId}'
   let publicOrigin = $state('https://your-openhook.example')
 
   onMount(() => {
     publicOrigin = window.location.origin
   })
 
-  const productionWebhookUrl = $derived(`${publicOrigin}${webhookPath}`)
+  const productionWebhookUrl = $derived(buildPublicWebhookUrl(publicOrigin))
+  const webhookPath = $derived(webhookDeliveryPath())
 
   const curlExample = $derived(`curl -X POST \\
   '${productionWebhookUrl}' \\
@@ -158,7 +159,7 @@
         <Send size={18} />
         <h2>投递调用</h2>
       </div>
-      <p class="guide-copy">创建路由后，外部系统调用 {'POST /webhook/routes/{routeId}'}，请求体会作为 data 进入模板渲染。生产环境的完整地址是 {productionWebhookUrl}。</p>
+      <p class="guide-copy">创建路由后，外部系统调用 POST {webhookPath}，请求体会作为 data 进入模板渲染。生产环境的完整地址是 {productionWebhookUrl}。</p>
       <div class="guide-field-list">
         <div class="guide-field-row">
           <span>请求方法</span>
