@@ -29,7 +29,10 @@ require_match "currentPage === 'guide'" frontend/src/App.svelte
 require_match "快速上手" frontend/src/pages/Guide.svelte
 require_match "创建消息模板" frontend/src/pages/Guide.svelte
 require_match "创建路由" frontend/src/pages/Guide.svelte
-require_match "POST /webhook/routes/\\{routeId\\}" frontend/src/pages/Guide.svelte
+# The Guide renders the delivery path from the endpoint template (env-configurable);
+# its default stays /webhook/routes/{routeId}.
+require_match "POST \\{webhookPath\\}" frontend/src/pages/Guide.svelte
+require_match '/webhook/routes/\$\{routeId\}' frontend/src/stores/api.js
 require_match "对外 Webhook 地址" frontend/src/pages/Guide.svelte
 require_match "Content-Type: application/json" frontend/src/pages/Guide.svelte
 require_match "目标 Webhook 地址.*下游" frontend/src/pages/Guide.svelte
@@ -38,7 +41,7 @@ require_match "envelope" frontend/src/pages/Guide.svelte
 require_match "raw" frontend/src/pages/Guide.svelte
 require_match "对外 Webhook 地址" frontend/src/pages/RouteEditor.svelte
 require_match "复制地址" frontend/src/pages/RouteEditor.svelte
-require_match "/webhook/routes/\\$\\{route.routeId\\}" frontend/src/pages/RouteEditor.svelte
+require_match "buildPublicWebhookUrl\\(window.location.origin, route.routeId\\)" frontend/src/pages/RouteEditor.svelte
 reject_match "https://${TEST_SITE_PATTERN}/api/routes/\\{routeId\\}/deliver" frontend/src/pages/Guide.svelte
 reject_match "window.location.origin\\}/api/routes" frontend/src/pages/RouteEditor.svelte
 require_match "login-hero" frontend/src/App.svelte
